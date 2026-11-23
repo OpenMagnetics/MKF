@@ -5734,9 +5734,10 @@ struct FlatCellSource {
 // The face sheet's sign: a section wide along x carries -D on its +y face and +D on its -y face; one wide along y carries
 // +D on its +x face and -D on its -x face (in the conductor's own frame). In the field kernels' own sign convention
 // (RectangleFieldKernel: a filament I at z0 gives Hy + j Hx = I / (2 pi (z0 - z)), opposite to the right-hand rule) both
-// put +D / w of field along the faces inside the cell. The slab's reaction screens, -g H inside, so D = -g H w. (Until
-// 2026-11-09 D was g H w, which reinforced the field instead: the foil beside the column-side one of the E 42 foil
-// stacks read 2.1-2.5x 2D OMFEM, and 1.00x with the screening sign.)
+// put +D / w of field along the faces inside the cell. The slab's reaction screens: D / w = -(s coth s - 1) H, H the field
+// inside the cell from every source including its own turn's sheets (see reaction_per_field_at). (Until 2026-11-09 D
+// reinforced the field instead: the foil beside the column-side one of the E 42 foil stacks read 2.1-2.5x 2D OMFEM, and
+// 1.00x with the screening sign.)
 double flat_face_sign(bool wideAlongX, int kind) {
     return wideAlongX ? -static_cast<double>(kind) : static_cast<double>(kind);
 }
@@ -6785,7 +6786,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
         HierarchicalMatrix elementPotential;          // mu0 / (2 pi) x minus mean log of the images, per unit J_e'
         HierarchicalMatrix elementReactionPotential;  // per unit D of a cell's face sheets
         HierarchicalMatrix cellFieldPerElement;       // H along the faces at each cell, per unit J_e (walls apart)
-        HierarchicalMatrix cellFieldPerReaction;      // per unit D of a cell's face sheets (own turn's sheets left out)
+        HierarchicalMatrix cellFieldPerReaction;      // per unit D of a cell's face sheets (own turn's sheets included)
         // The preconditioner's groups: turns that lie together (neighbours couple the most), with their elements and cells.
         // Per group, its exact blocks with itself, row-major: elements x elements, elements x cells, cells x elements,
         // cells x cells, in the order of the group's elements and cells.
@@ -6795,6 +6796,8 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
         std::vector<std::vector<double>> reactionPotentialPerGroup;
         std::vector<std::vector<double>> fieldPerElementPerGroup;
         std::vector<std::vector<double>> fieldPerReactionPerGroup;
+        // Per cell, the field its own turn's face sheets (not their images) put at it, per unit D of each: (cell, value).
+        std::vector<std::vector<std::pair<size_t, double>>> ownFaceFieldPerCell;
         size_t stored_values() const {
             size_t values = elementPotential.stored_values() + elementReactionPotential.stored_values() + cellFieldPerElement.stored_values() +
                             cellFieldPerReaction.stored_values() + key.size();
@@ -7382,10 +7385,9 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             }
             return field;
         };
-        // The face sheets of a cell at another: with `own`, only the conductor's own sheets (not their images), which a
-        // cell of the same turn does not see (their field inside the conductor is the slab's own screening, held by the
-        // loss kernel's slab formula). The operator takes every sheet, a smooth kernel, and the own-turn ones are taken
-        // back out as sparse corrections.
+        // The face sheets of a cell at another: with `own`, only the conductor's own sheets (not their images). The split
+        // takes every sheet, its own turn's included (the slab relation holds the field inside the conductor, see
+        // reaction_per_field_at); the own sheets are kept apart only to report the field from outside the slab.
         auto face_field = [&](size_t cell, size_t other, bool ownOnly) {
             double total = 0;
             for (size_t face : faceSourcesPerCell[other]) {
@@ -7597,10 +7599,11 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             freshOperators.cellFieldPerElement = HierarchicalMatrix(cellPoints, elementPoints, recorded_field_per_element_entry, splitOperatorTolerance, form);
             freshOperators.cellFieldPerReaction = HierarchicalMatrix(cellPoints, cellPoints, [&](size_t cell, size_t other) { return recorded_face_field(cell, other, false); },
                                                                      splitOperatorTolerance, form);
+            freshOperators.ownFaceFieldPerCell.assign(numberCells, {});
             for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
                 for (size_t cell : cellsPerTurn[turnIndex]) {
                     for (size_t other : cellsPerTurn[turnIndex]) {
-                        freshOperators.cellFieldPerReaction.add_sparse(cell, other, -recorded_face_field(cell, other, true));
+                        freshOperators.ownFaceFieldPerCell[cell].emplace_back(other, recorded_face_field(cell, other, true));
                     }
                 }
             }
@@ -7634,13 +7637,9 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                                                                                              : field_per_element_entry(cell, source));
                     }
                     for (size_t other : cells) {
-                        // The face sheets of `other`, less its own sheets when they are on the same turn.
+                        // The face sheets of `other`, its own turn's included.
                         const size_t index = fieldPerReaction.size();
-                        double field = faceFieldRecords[group].known[index] ? faceFieldRecords[group].values[index] : face_field(cell, other, false);
-                        if (cellTurn[cell] == cellTurn[other]) {
-                            field -= ownFaceFieldRecords[group].known[index] ? ownFaceFieldRecords[group].values[index] : face_field(cell, other, true);
-                        }
-                        fieldPerReaction.push_back(field);
+                        fieldPerReaction.push_back(faceFieldRecords[group].known[index] ? faceFieldRecords[group].values[index] : face_field(cell, other, false));
                     }
                 }
             }
@@ -7920,8 +7919,14 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                 const auto& flat = split.flatTurns[flatTurnPerCell[cell]];
                 const double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wires[windingPerTurn[flat.turnIndex]], frequency, temperature);
                 const std::complex<double> slab = std::complex<double>(1, 1) * flat.thickness / (2 * skinDepth);
-                const std::complex<double> reaction = (slab - std::tanh(slab)) / slab;
-                // D = -g H w: the face sheets screen (see flat_face_sign).
+                // A slab whose faces carry H_s screens its inside to H_s tanh(s) / s on average: the face sheets, D / w = H_s - H
+                // apart, hold D / w = (s coth s - 1) H with H the field inside, which counts the conductor's own sheets. The
+                // relation held before, D = (1 - tanh(s) / s) w H with H from everything but its own sheets, is the same only
+                // for a strip much wider than thick, whose own sheets put exactly D / w inside: a catalogue rectangular wire
+                // (2-3.5:1) screened the field along its faces too weakly and its flux crossed the bars (ETD 49 stacks
+                // 0.64x 2-D OMFEM, the field between their bars 0.56-0.77x; 0.79x and 0.92-0.97x with this relation).
+                const std::complex<double> reaction = slab / std::tanh(slab) - 1.0;
+                // The face sheets screen (see flat_face_sign).
                 reactionPerField[cell] = -reaction * cellWidth[cell];
             }
             return reactionPerField;
@@ -7989,7 +7994,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                 const double angularFrequency = 2 * std::numbers::pi * frequency;
                 system.jOmega = Complex(0, angularFrequency);
                 const Complex jOmega = system.jOmega;
-                // Per cell, g w: D = g w H.
+                // Per cell, D per unit of the field inside it.
                 system.reactionPerField = reaction_per_field_at(frequency);
                 const auto& reactionPerField = system.reactionPerField;
                 // The system is solved by GMRES: its product goes through the operators, and its preconditioner is the
@@ -8327,13 +8332,18 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                     }
                     const size_t cell = elements[element].globalCell.value();
                     const size_t flatIndex = flatTurnPerCell[cell];
-                    const std::complex<double> field = solution[offsetField + cell];
+                    // The field it reports is the one from outside its own slab, as the loss kernel reads it: its own turn's
+                    // sheets taken back out of the solved field.
+                    std::complex<double> field = solution[offsetField + cell];
+                    for (const auto& [other, ownFaceField] : operators->ownFaceFieldPerCell[cell]) {
+                        field -= ownFaceField * reactionPerField[other] * solution[offsetField + other];
+                    }
                     if (std::isnan(solution[element].real()) || std::isnan(solution[element].imag()) || std::isnan(field.real()) || std::isnan(field.imag())) {
                         throw NaNResultException("Width cells: NaN cell current or field at " + std::to_string(frequency) + " Hz");
                     }
                     cellCurrent[flatIndex].push_back(solution[element]);
                     cellField[flatIndex].push_back(field);
-                    cellReaction[flatIndex].push_back(reactionPerField[cell] * field);
+                    cellReaction[flatIndex].push_back(reactionPerField[cell] * solution[offsetField + cell]);
                 }
                 split.frequencies.push_back(frequency);
                 split.listedFrequenciesPerFrequency.push_back(std::move(harmonic.listedFrequencies));
