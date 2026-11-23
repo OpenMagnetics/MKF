@@ -18713,7 +18713,15 @@ std::pair<size_t, std::vector<int64_t>> get_number_layers_needed_and_number_phys
     std::vector<int64_t> layerPhysicalTurns;
     size_t numberLayers = 0;
     while (reaminingPhysicalTurnsInSection > 0) {
-        double wireAngle = wound_distance_to_angle(wireHeight, std::max(wireWidth, currentRadius));
+        // ABT #2512: a ring holds the turns that go round IT, so the pitch is the chord at the ring's
+        // own radius, the radius wind_by_round_turns lays them at. It was taken at no less than the
+        // wire's width: a ring nearer the bore's centre than that was credited with the turns of a
+        // wider circle. On T 50/30/15 with 3.718 x 3.777 mm litz the fourth ring (centres at 1.987 mm,
+        // 143.8 deg a turn, two turns round it) was counted at 3.718 mm (61.1 deg, five), handed four
+        // turns, and laid them 143.8 deg apart over 575 deg: three bore crossings overlapped by 1.4 mm.
+        // No turn goes round a ring at or past the centre (the stack-depth check of
+        // wind_by_round_sections refuses such a stack).
+        double wireAngle = currentRadius > 0 ? wound_distance_to_angle(wireHeight, currentRadius) : 360;
         // ABT #187: connection leads crossing this ring block angular turn slots (real winding
         // geometry) — the ring holds that many fewer turns, spilling them inward to the next ring.
         int64_t blockedSlots = (blockedSlotsPerLayer != nullptr && numberLayers < blockedSlotsPerLayer->size())
@@ -23351,7 +23359,8 @@ std::vector<double> Coil::get_contiguous_toroid_proportion_per_winding_by_needed
         double radius = need.firstRingRadius;
         int64_t held = 0;
         for (size_t ring = 0; ring < rings; ++ring) {
-            double wireAngle = wound_distance_to_angle(need.wireHeight, std::max(need.wireWidth, radius));
+            // At the ring's own radius, as get_number_layers_needed_and_number_physical_turns counts it (ABT #2512).
+            double wireAngle = wound_distance_to_angle(need.wireHeight, radius);
             int64_t blocked = ring >= 1 ? need.corridorSlots : 0;
             held += int64_t(std::max(0.0, whole_fits(angle, wireAngle) - double(blocked)));
             if (radius > need.wireWidth) {
@@ -26326,6 +26335,20 @@ bool Coil::wind_by_round_turns() {
             // get caught downstream by the collision check.
             if (wireRadius <= 0 || wireAngle > 180 || std::isnan(wireAngle)) {
                 // Turns won't fit
+                return false;
+            }
+            // ABT #2512: A RING NEVER TAKES MORE TURNS THAN GO ROUND IT. Each turn takes wireAngle of
+            // its ring whatever the alignment, so a ring given more turns than 360 deg holds would be
+            // laid past a full circle, its last turns on top of its first (T 50/30/15, 4 turns of
+            // 143.8 deg on a 575 deg layer). The layer split must never hand a ring that many; if it
+            // does, this coil is not wound, and says so.
+            if (double(physicalTurnsInLayer) * wireAngle > 360 * (1 + fitTolerance)) {
+                std::ostringstream reason;
+                reason << std::fixed << std::setprecision(3) << "layer '" << layer.get_name() << "' was given " << physicalTurnsInLayer
+                       << " turns, but at its radius of " << wireRadius * 1e3 << " mm one turn of " << wireHeight * 1e3
+                       << " mm takes " << wireAngle << " deg, so only " << int64_t(whole_fits(360, wireAngle))
+                       << " go round it: they would span " << double(physicalTurnsInLayer) * wireAngle << " deg";
+                _lastFitFailure = reason.str();
                 return false;
             }
 

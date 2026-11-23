@@ -9175,26 +9175,13 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Rectangular_Wi
     auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
     auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
 
-    if (plot) {
-        auto outFile = outputFilePath;
-        outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Rectangular_Wire.svg");
-        std::filesystem::remove(outFile);
-        Painter painter(outFile);
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
-
-        painter.paint_core(magnetic);
-        painter.paint_coil_turns(magnetic);
-        painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        REQUIRE(std::filesystem::exists(outFile));
-    }
+    // The 6 turns of 2.50x1.18 rectangular wire on the inner face need 182.2 deg, but their contiguous
+    // section is only 179.86 deg wide: 5 fit on one ring, and a second ring (5.17 mm deep) does not fit the
+    // 5 mm window. MKF used to wind them anyway, crossing the section wall (ABT #2512); it must refuse.
     settings.reset();
-    coil.convert_turns_to_polar_coordinates();
-
-    REQUIRE(coil.get_turns_description().value().size() == 96);
-    // Check this one manually, checking collision between two rotated rectangles is not worth it
+    REQUIRE(!coil.get_turns_description());
+    INFO(coil.get_last_fit_failure());
+    CHECK(coil.get_last_fit_failure().find("need 2 rings") != std::string::npos);
 }
 
 TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Top_Margin", "[constructive-model][coil][round-winding-window][margin][smoke-test]") {
@@ -18234,6 +18221,44 @@ TEST_CASE("The insulation wrap after the last section stays inside the window (A
         wrapChecked = wrapChecked || (section.get_type() == ElectricalType::INSULATION && &section == &sections.back());
     }
     CHECK(wrapChecked);
+    settings.reset();
+}
+
+// ABT #2512: a toroid ring holds only the turns that go round it. Henry's T 50/30/15 Mix 8 design, 49 turns of
+// Litz 270x0.16 single served, flattened to 3.718 x 3.777 mm, stacks four rings inward from the 15 mm window
+// wall; the fourth has its turn centres at 1.987 mm, where one turn's chord takes 143.8 deg, so two turns go
+// round it. The ring count sized that ring at the wire's width (3.718 mm) instead of its own radius, credited it
+// with five, and the winder laid four turns 143.8 deg apart: a 575 deg layer whose bore crossings overlapped by
+// up to 1.40 mm. Whatever the winder makes of this design, no ring spans more than a circle and no two turns
+// share copper.
+TEST_CASE("A toroid ring never holds more turns than go round it (ABT #2512)", "[constructive-model][coil][toroid][litz][abt2512]") {
+    auto [fits, coil] = wind_published_design("abt2512_t50_mix8_49t_litz270_magnetic.json", {0});
+    INFO("wound: " << fits << ", " << coil.get_last_fit_failure());
+    REQUIRE(coil.get_layers_description());
+    size_t ringsChecked = 0;
+    const auto layers = coil.get_layers_description().value();
+    for (const auto& layer : layers) {
+        if (layer.get_type() != ElectricalType::CONDUCTION) {
+            continue;
+        }
+        INFO(layer.get_name() << ": " << layer.get_dimensions()[1] << " deg");
+        CHECK(layer.get_dimensions()[1] <= 360 + 1e-9);
+        ringsChecked++;
+    }
+    CHECK(ringsChecked > 0);
+    REQUIRE(coil.get_turns_description());
+    const auto turns = coil.get_turns_description().value();
+    for (size_t i = 0; i < turns.size(); ++i) {
+        for (size_t j = i + 1; j < turns.size(); ++j) {
+            const auto a = turns[i].get_coordinates();
+            const auto b = turns[j].get_coordinates();
+            const auto da = turns[i].get_dimensions().value();
+            const auto db = turns[j].get_dimensions().value();
+            const double thinnest = std::min({da[0], da[1], db[0], db[1]});
+            INFO(turns[i].get_name() << " and " << turns[j].get_name());
+            CHECK(std::hypot(a[0] - b[0], a[1] - b[1]) >= thinnest - 1e-9);
+        }
+    }
     settings.reset();
 }
 
