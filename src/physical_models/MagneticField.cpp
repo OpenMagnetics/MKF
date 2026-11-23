@@ -6995,14 +6995,6 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             }
             return total;
         };
-        auto field_per_reaction_entry = [&](size_t cell, size_t other) {
-            double field = face_field(cell, other, false);
-            if (cellTurn[cell] == cellTurn[other]) {
-                field -= face_field(cell, other, true);
-            }
-            return field;
-        };
-
         // The cache key: every input the operators are computed from.
         std::vector<double> geometryKey;
         {
@@ -7048,21 +7040,6 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             std::vector<std::array<double, 2>> cellPoints(numberCells);
             for (size_t cell = 0; cell < numberCells; ++cell) {
                 cellPoints[cell] = {cellX[cell], cellY[cell]};
-            }
-            // Every kernel below is gated by toroidRegions.reaches, so it changes form with the point's region or window.
-            const HierarchicalMatrix::PointForm form = [&](const std::array<double, 2>& point) { return toroidRegions.form_at(point); };
-            freshOperators.elementPotential = HierarchicalMatrix(elementPoints, elementPoints, potential_entry, splitOperatorTolerance, form);
-            freshOperators.elementReactionPotential =
-                HierarchicalMatrix(elementPoints, cellPoints, reaction_potential_entry, splitOperatorTolerance, form);
-            freshOperators.cellFieldPerElement = HierarchicalMatrix(cellPoints, elementPoints, field_per_element_entry, splitOperatorTolerance, form);
-            freshOperators.cellFieldPerReaction = HierarchicalMatrix(cellPoints, cellPoints, [&](size_t cell, size_t other) { return face_field(cell, other, false); },
-                                                                     splitOperatorTolerance, form);
-            for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
-                for (size_t cell : cellsPerTurn[turnIndex]) {
-                    for (size_t other : cellsPerTurn[turnIndex]) {
-                        freshOperators.cellFieldPerReaction.add_sparse(cell, other, -face_field(cell, other, true));
-                    }
-                }
             }
             {
                 std::vector<size_t> order(turns.size());
@@ -7111,7 +7088,99 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                     }
                 }
             }
+            // The preconditioner's blocks are pairs within a group: the operators evaluate most of them (their near blocks are
+            // dense), so each entry of a group pair is kept as it is evaluated and the blocks take it from there.
             const size_t numberGroups = freshOperators.elementsPerGroup.size();
+            constexpr size_t noGroup = std::numeric_limits<size_t>::max();
+            std::vector<size_t> groupPerElement(numberElements, noGroup);
+            std::vector<size_t> slotPerElement(numberElements, 0);
+            std::vector<size_t> groupPerCell(numberCells, noGroup);
+            std::vector<size_t> slotPerCell(numberCells, 0);
+            for (size_t group = 0; group < numberGroups; ++group) {
+                for (size_t slot = 0; slot < freshOperators.elementsPerGroup[group].size(); ++slot) {
+                    groupPerElement[freshOperators.elementsPerGroup[group][slot]] = group;
+                    slotPerElement[freshOperators.elementsPerGroup[group][slot]] = slot;
+                }
+                for (size_t slot = 0; slot < freshOperators.cellsPerGroup[group].size(); ++slot) {
+                    groupPerCell[freshOperators.cellsPerGroup[group][slot]] = group;
+                    slotPerCell[freshOperators.cellsPerGroup[group][slot]] = slot;
+                }
+            }
+            // Per group, row-major like the blocks: the value of each pair, and whether it was evaluated.
+            struct GroupRecord {
+                std::vector<double> values;
+                std::vector<char> known;
+                void resize(size_t size) {
+                    values.assign(size, 0.0);
+                    known.assign(size, 0);
+                }
+                void keep(size_t index, double value) {
+                    values[index] = value;
+                    known[index] = 1;
+                }
+            };
+            std::vector<GroupRecord> potentialRecords(numberGroups);
+            std::vector<GroupRecord> reactionPotentialRecords(numberGroups);
+            std::vector<GroupRecord> fieldPerElementRecords(numberGroups);
+            std::vector<GroupRecord> faceFieldRecords(numberGroups);     // face_field(cell, other, false)
+            std::vector<GroupRecord> ownFaceFieldRecords(numberGroups);  // face_field(cell, other, true), same turn
+            for (size_t group = 0; group < numberGroups; ++group) {
+                const size_t groupElements = freshOperators.elementsPerGroup[group].size();
+                const size_t groupCells = freshOperators.cellsPerGroup[group].size();
+                potentialRecords[group].resize(groupElements * groupElements);
+                reactionPotentialRecords[group].resize(groupElements * groupCells);
+                fieldPerElementRecords[group].resize(groupCells * groupElements);
+                faceFieldRecords[group].resize(groupCells * groupCells);
+                ownFaceFieldRecords[group].resize(groupCells * groupCells);
+            }
+            auto recorded_potential_entry = [&](size_t target, size_t source) {
+                const double value = potential_entry(target, source);
+                const size_t group = groupPerElement[target];
+                if (group == groupPerElement[source]) {
+                    potentialRecords[group].keep(slotPerElement[target] * freshOperators.elementsPerGroup[group].size() + slotPerElement[source], value);
+                }
+                return value;
+            };
+            auto recorded_reaction_potential_entry = [&](size_t target, size_t cell) {
+                const double value = reaction_potential_entry(target, cell);
+                const size_t group = groupPerElement[target];
+                if (group == groupPerCell[cell]) {
+                    reactionPotentialRecords[group].keep(slotPerElement[target] * freshOperators.cellsPerGroup[group].size() + slotPerCell[cell], value);
+                }
+                return value;
+            };
+            auto recorded_field_per_element_entry = [&](size_t cell, size_t source) {
+                const double value = field_per_element_entry(cell, source);
+                const size_t group = groupPerCell[cell];
+                if (group == groupPerElement[source]) {
+                    fieldPerElementRecords[group].keep(slotPerCell[cell] * freshOperators.elementsPerGroup[group].size() + slotPerElement[source], value);
+                }
+                return value;
+            };
+            auto recorded_face_field = [&](size_t cell, size_t other, bool ownOnly) {
+                const double value = face_field(cell, other, ownOnly);
+                const size_t group = groupPerCell[cell];
+                if (group == groupPerCell[other]) {
+                    auto& records = ownOnly ? ownFaceFieldRecords : faceFieldRecords;
+                    records[group].keep(slotPerCell[cell] * freshOperators.cellsPerGroup[group].size() + slotPerCell[other], value);
+                }
+                return value;
+            };
+            // Every kernel below is gated by toroidRegions.reaches, so it changes form with the point's region or window.
+            const HierarchicalMatrix::PointForm form = [&](const std::array<double, 2>& point) { return toroidRegions.form_at(point); };
+            freshOperators.elementPotential = HierarchicalMatrix(elementPoints, elementPoints, recorded_potential_entry, splitOperatorTolerance, form);
+            freshOperators.elementReactionPotential =
+                HierarchicalMatrix(elementPoints, cellPoints, recorded_reaction_potential_entry, splitOperatorTolerance, form);
+            freshOperators.cellFieldPerElement = HierarchicalMatrix(cellPoints, elementPoints, recorded_field_per_element_entry, splitOperatorTolerance, form);
+            freshOperators.cellFieldPerReaction = HierarchicalMatrix(cellPoints, cellPoints, [&](size_t cell, size_t other) { return recorded_face_field(cell, other, false); },
+                                                                     splitOperatorTolerance, form);
+            for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+                for (size_t cell : cellsPerTurn[turnIndex]) {
+                    for (size_t other : cellsPerTurn[turnIndex]) {
+                        freshOperators.cellFieldPerReaction.add_sparse(cell, other, -recorded_face_field(cell, other, true));
+                    }
+                }
+            }
             freshOperators.potentialPerGroup.assign(numberGroups, {});
             freshOperators.reactionPotentialPerGroup.assign(numberGroups, {});
             freshOperators.fieldPerElementPerGroup.assign(numberGroups, {});
@@ -7123,20 +7192,32 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                 auto& reactionPotential = freshOperators.reactionPotentialPerGroup[group];
                 auto& fieldPerElement = freshOperators.fieldPerElementPerGroup[group];
                 auto& fieldPerReaction = freshOperators.fieldPerReactionPerGroup[group];
+                // An entry the operators did not evaluate is evaluated here (a group pair in one of their low-rank blocks).
                 for (size_t target : groupElements) {
                     for (size_t source : groupElements) {
-                        potential.push_back(potential_entry(target, source));
+                        const size_t index = potential.size();
+                        potential.push_back(potentialRecords[group].known[index] ? potentialRecords[group].values[index] : potential_entry(target, source));
                     }
                     for (size_t cell : cells) {
-                        reactionPotential.push_back(reaction_potential_entry(target, cell));
+                        const size_t index = reactionPotential.size();
+                        reactionPotential.push_back(reactionPotentialRecords[group].known[index] ? reactionPotentialRecords[group].values[index]
+                                                                                                   : reaction_potential_entry(target, cell));
                     }
                 }
                 for (size_t cell : cells) {
                     for (size_t source : groupElements) {
-                        fieldPerElement.push_back(field_per_element_entry(cell, source));
+                        const size_t index = fieldPerElement.size();
+                        fieldPerElement.push_back(fieldPerElementRecords[group].known[index] ? fieldPerElementRecords[group].values[index]
+                                                                                             : field_per_element_entry(cell, source));
                     }
                     for (size_t other : cells) {
-                        fieldPerReaction.push_back(field_per_reaction_entry(cell, other));
+                        // The face sheets of `other`, less its own sheets when they are on the same turn.
+                        const size_t index = fieldPerReaction.size();
+                        double field = faceFieldRecords[group].known[index] ? faceFieldRecords[group].values[index] : face_field(cell, other, false);
+                        if (cellTurn[cell] == cellTurn[other]) {
+                            field -= ownFaceFieldRecords[group].known[index] ? ownFaceFieldRecords[group].values[index] : face_field(cell, other, true);
+                        }
+                        fieldPerReaction.push_back(field);
                     }
                 }
             }
