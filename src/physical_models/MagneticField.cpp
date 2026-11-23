@@ -234,10 +234,12 @@ struct RectangleFieldKernel {
     double a = 0;
     double b = 0;
     double farRadiusSquared = 0;
+    double halfDiagonal = 0;  // std::hypot(a, b): a round-post window reads the ring's curvature part no closer than this
     double moments[numberMoments] = {};
     RectangleFieldKernel() = default;
     RectangleFieldKernel(double halfWidth, double halfHeight) : a(halfWidth), b(halfHeight) {
         farRadiusSquared = 16.0 * (a * a + b * b);
+        halfDiagonal = std::hypot(a, b);
         for (size_t index = 0; index < numberMoments; ++index) {
             const int k = 2 * static_cast<int>(index);
             double moment = 0;
@@ -5679,7 +5681,7 @@ std::shared_ptr<const FlatCellFieldOperator> build_flat_cell_field_operator(cons
                 fieldY += hy;
                 if (axisymmetricWindow) {
                     auto [curvatureX, curvatureY] = axisymmetric_curvature_field(image.weight * source.sign, image.x, image.y, x, y,
-                                                                                 std::hypot(source.kernel.a, source.kernel.b));
+                                                                                 source.kernel.halfDiagonal);
                     fieldX += curvatureX;
                     fieldY += curvatureY;
                 }
@@ -6947,7 +6949,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                     field += along_faces(cell, turned_rectangle_field(element.kernel, image.angle, cellX[cell] - image.x, cellY[cell] - image.y, weight));
                     if (elementWindow) {
                         field += along_faces(cell, axisymmetric_curvature_field(weight, image.x, image.y, cellX[cell], cellY[cell],
-                                                                                std::hypot(element.kernel.a, element.kernel.b)));
+                                                                                element.kernel.halfDiagonal));
                     }
                 }
                 else {
@@ -6984,7 +6986,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                     field += along_faces(cell, turned_rectangle_field(source.kernel, source.section.angle, cellX[cell] - image.x, cellY[cell] - image.y, image.weight));
                     if (elementWindow) {
                         field += along_faces(cell, axisymmetric_curvature_field(image.weight, image.x, image.y, cellX[cell], cellY[cell],
-                                                                                std::hypot(source.kernel.a, source.kernel.b)));
+                                                                                source.kernel.halfDiagonal));
                     }
                 }
                 total += source.sign * field;
