@@ -1277,7 +1277,10 @@ TEST_CASE("Test_CoreAdviserAvailableCores_No_Toroids_Two_Windings","[adviser][co
     // (4.85 x 11.3 mm in the 6.05 x 13.2 mm = 79.86 mm2 window) gives 54.805 / 79.86 = 0.686263 (+0.83 %). Before, it
     // missed the cull (cut-off score 0.530519); now it is kept 399th of 400 (score 0.505612, the cut-off score), stays
     // under the temperature limit (9th of the first search's 10) and is merged in.
-    REQUIRE(masMagnetics.size() == 12);
+    // Re-pinned 2026-11-23, 12 -> 11 (Alf approved, ABT #2433 continuous turn-face exposure; fixture unchanged):
+    // EQ 30 - 3C96 - Gapped 0.52 mm drops out. Its winding, read hotter by the new thermal network, fails the 130 C
+    // temperature gate; the other 11 are the same cores.
+    REQUIRE(masMagnetics.size() == 11);
 
     // Verify all results are non-toroidal (by name pattern) and have valid scores
     for (auto& [mas, scoring] : masMagnetics) {

@@ -4683,7 +4683,17 @@ TEST_CASE("ABT838_Bare_Copper_Does_Not_Radiate_Like_A_Matte_Dielectric", "[tempe
     // coated one's.
     std::vector<double> bareCoefficients;
     std::vector<double> coatedCoefficients;
+    // ABT #2433 (Alf, 2026-11-23): per layout, the radiating area of each kind and the bare foil's whole surface. With
+    // the turn faces' continuous exposure a buried layer keeps the thin openings of the slots beside it, so "buried"
+    // means a negligible radiating area, no longer none.
+    struct RadiatingAreas {
+        double bare = 0;
+        double coated = 0;
+        double bareSurface = 0;
+    };
+    RadiatingAreas areas;
     auto readRadiatingTurnSurfaces = [&](const OpenMagnetics::Magnetic& magnetic) {
+        areas = RadiatingAreas{};
         auto losses = getLossesFromSimulation(magnetic, mas.get_mutable_inputs());
 
         TemperatureConfig config;
@@ -4699,6 +4709,10 @@ TEST_CASE("ABT838_Bare_Copper_Does_Not_Radiate_Like_A_Matte_Dielectric", "[tempe
         REQUIRE(result.converged);
 
         const auto& nodes = temperature.getNodes();
+        for (const auto& node : nodes) {
+            if (node.part != ThermalNodePartType::TURN || !node.windingIndex || node.windingIndex.value() != 1) continue;
+            for (const auto& quadrant : node.quadrants) areas.bareSurface += quadrant.surfaceArea;
+        }
         for (const auto& resistor : temperature.getResistances()) {
             if (resistor.type != HeatTransferType::RADIATION) {
                 continue;
@@ -4712,6 +4726,7 @@ TEST_CASE("ABT838_Bare_Copper_Does_Not_Radiate_Like_A_Matte_Dielectric", "[tempe
             }
             const double impliedCoefficient = 1.0 / (resistor.resistance * resistor.area);
             // Winding 0 is the served litz, winding 1 the bare foil.
+            (node.windingIndex.value() == 1 ? areas.bare : areas.coated) += resistor.area;
             if (node.windingIndex.value() == 1) {
                 bareCoefficients.push_back(impliedCoefficient);
                 CHECK_THAT(resistor.emissivity,
@@ -4725,15 +4740,19 @@ TEST_CASE("ABT838_Bare_Copper_Does_Not_Radiate_Like_A_Matte_Dielectric", "[tempe
         }
     };
 
-    // Stored layout, litz | foil | litz: the outer litz layer radiates, the buried foil does not.
+    // Stored layout, litz | foil | litz: the outer litz layer radiates, the buried foil only through the thin openings
+    // of the slots beside it (ABT #2433, Alf 2026-11-23: under 10 % of its surface).
     readRadiatingTurnSurfaces(mas.get_magnetic());
-    CHECK(bareCoefficients.empty());
+    REQUIRE(areas.bareSurface > 0);
+    CHECK(areas.bare < 0.10 * areas.bareSurface);
     REQUIRE(!coatedCoefficients.empty());
-    const size_t coatedSurfacesOfStoredLayout = coatedCoefficients.size();
+    const double coatedAreaOfStoredLayout = areas.coated;
+    REQUIRE(coatedAreaOfStoredLayout > 0);
 
-    // litz | foil: the foil is the outermost layer and covers the litz, so it alone radiates.
+    // litz | foil: the foil is the outermost layer and covers the litz, so the litz radiates under 10 % of what it did
+    // uncovered.
     readRadiatingTurnSurfaces(withoutOuterPrimarySection(mas.get_magnetic()));
-    CHECK(coatedCoefficients.size() == coatedSurfacesOfStoredLayout);
+    CHECK(areas.coated < 0.10 * coatedAreaOfStoredLayout);
 
     // Both kinds must actually be present, or the test is asserting nothing.
     REQUIRE(!bareCoefficients.empty());
@@ -5883,4 +5902,89 @@ TEST_CASE("Temperature: a rod core's room-facing surface is its two end discs", 
     auto completed = OpenMagnetics::mas_autocomplete(mas);
     REQUIRE(completed.get_magnetic().get_coil().get_turns_description());
     CHECK(completed.get_magnetic().get_coil().get_turns_description()->size() == 30);
+}
+
+TEST_CASE("Temperature: ABT 2433 the hot spot follows the turn pitch without a step", "[temperature][abt-2433][smoke-test]") {
+    // A layer's turns facing each other across a slot used to convect freely up to a pitch of 1.5 turn heights and
+    // not at all below it (and to conduct only below a gap of min(w, h) / 4): one turn more or less moved a whole layer
+    // across those steps, and the hot spot of a Henry study jumped 70 -> 319 C between 34 and 35 turns of E 160. The
+    // exchange now follows the gap continuously. One layer of 34 flat turns on E 160/38/40, the same losses, the pitch
+    // set across the old 1.5 h step (1.4775 mm for these 0.985 mm tall turns).
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    auto core = OpenMagneticsTesting::get_quick_core("E 160/38/40", json::parse("[]"), 1, "Mix 8");
+    auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, 0.001, 0.001);
+    json bobbinJson;
+    to_json(bobbinJson, bobbin);
+    json coilJson;
+    coilJson["bobbin"] = bobbinJson;
+    coilJson["functionalDescription"] = json::array({json{{"name", "Primary"}, {"numberTurns", 34}, {"numberParallels", 1},
+                                                          {"isolationSide", "primary"}, {"wire", "Rectangular 4x0.90 - Grade 1"}}});
+    OpenMagnetics::Coil coil(coilJson, false);
+    REQUIRE(coil.wind());
+    OpenMagnetics::Magnetic wound;
+    wound.set_core(core);
+    wound.set_coil(coil);
+    const auto turns = wound.get_coil().get_turns_description().value();
+    REQUIRE(turns.size() == 34);
+    double centre = 0;
+    for (const auto& turn : turns) {
+        REQUIRE(turn.get_coordinates()[0] == turns.front().get_coordinates()[0]);  // one layer
+        centre += turn.get_coordinates()[1] / turns.size();
+    }
+    REQUIRE(turns.front().get_dimensions());
+    const double height = turns.front().get_dimensions().value()[1];
+    CAPTURE(height);
+
+    auto hotSpotAtPitch = [&](double pitch) {
+        auto magnetic = wound;
+        auto placed = turns;
+        std::vector<size_t> order(placed.size());
+        std::iota(order.begin(), order.end(), 0);
+        std::sort(order.begin(), order.end(), [&](size_t a, size_t b) { return placed[a].get_coordinates()[1] < placed[b].get_coordinates()[1]; });
+        for (size_t k = 0; k < order.size(); ++k) {
+            auto coordinates = placed[order[k]].get_coordinates();
+            coordinates[1] = centre + (static_cast<double>(k) - (order.size() - 1) / 2.0) * pitch;
+            placed[order[k]].set_coordinates(coordinates);
+        }
+        magnetic.get_mutable_coil().set_turns_description(placed);
+        TemperatureConfig config;
+        config.ambientTemperature = 40.0;
+        config.coreLosses = 20.0;
+        config.plotSchematic = false;
+        WindingLossesOutput lossesOutput;
+        std::vector<WindingLossesPerElement> perTurn;
+        for (const auto& turn : placed) {
+            OhmicLosses ohmic;
+            ohmic.set_losses(0.8);
+            ohmic.set_method_used("test");
+            ohmic.set_origin(ResultOrigin::SIMULATION);
+            WindingLossesPerElement element;
+            element.set_name(turn.get_name());
+            element.set_ohmic_losses(ohmic);
+            perTurn.push_back(element);
+        }
+        config.windingLosses = 0.8 * placed.size();
+        lossesOutput.set_winding_losses_per_turn(perTurn);
+        lossesOutput.set_winding_losses(config.windingLosses);
+        lossesOutput.set_origin(ResultOrigin::SIMULATION);
+        lossesOutput.set_method_used("test");
+        config.windingLossesOutput = lossesOutput;
+        Temperature temperature(magnetic, config);
+        auto result = temperature.calculateTemperatures();
+        REQUIRE(result.converged);
+        return result.maximumTemperature;
+    };
+
+    std::vector<double> pitches;
+    for (double ratio = 1.42; ratio <= 1.58 + 1e-9; ratio += 0.02) pitches.push_back(ratio * height);
+    std::vector<double> hotSpots;
+    for (double pitch : pitches) hotSpots.push_back(hotSpotAtPitch(pitch));
+    const double rise = *std::max_element(hotSpots.begin(), hotSpots.end()) - 40.0;
+    REQUIRE(rise > 0);
+    for (size_t k = 1; k < pitches.size(); ++k) {
+        INFO("pitch " << pitches[k - 1] * 1e3 << " -> " << pitches[k] * 1e3 << " mm: hot spot " << hotSpots[k - 1] << " -> " << hotSpots[k] << " C");
+        // 0.02 h of pitch moves the hot spot by a few percent of the rise at most; the old step moved it by most of it.
+        CHECK(std::abs(hotSpots[k] - hotSpots[k - 1]) < 0.05 * rise);
+    }
 }

@@ -148,6 +148,17 @@ struct BuiltNetwork {
         if (count == 0) throw std::runtime_error("no turn nodes of winding " + std::to_string(windingIndex));
         return sum / static_cast<double>(count);
     }
+    double hottest_turn_temperature(size_t windingIndex) const {
+        double hottest = std::numeric_limits<double>::lowest();
+        size_t count = 0;
+        for (size_t i : of_part(ThermalNodePartType::TURN)) {
+            if (nodes[i].windingIndex.value() != windingIndex) continue;
+            hottest = std::max(hottest, result.nodeTemperatures.at(nodes[i].name));
+            ++count;
+        }
+        if (count == 0) throw std::runtime_error("no turn nodes of winding " + std::to_string(windingIndex));
+        return hottest;
+    }
     std::pair<double, double> turn_temperature_range() const {
         double lowest = std::numeric_limits<double>::max();
         double highest = std::numeric_limits<double>::lowest();
@@ -467,10 +478,13 @@ TEST_CASE("ThermalNetwork ABT 1540: stacked sections reach temperatures that fol
         CHECK(network->result.averageCoreTemperature < hottestCore);
     }
 
-    CHECK(primaryOnly.mean_turn_temperature(0) > primaryOnly.mean_turn_temperature(1));
-    CHECK(secondaryOnly.mean_turn_temperature(1) > secondaryOnly.mean_turn_temperature(0));
-    CHECK(primaryOnly.mean_turn_temperature(0) > secondaryOnly.mean_turn_temperature(0));
-    CHECK(secondaryOnly.mean_turn_temperature(1) > primaryOnly.mean_turn_temperature(1));
+    // A winding without losses is never hotter than the hottest turn of the one heating it. Its mean can lie above the
+    // heated winding's mean when it is sandwiched between the heated sections (P-S-P-S-P, ABT #2433, Alf 2026-11-23).
+    CHECK(primaryOnly.hottest_turn_temperature(1) < primaryOnly.hottest_turn_temperature(0));
+    CHECK(secondaryOnly.hottest_turn_temperature(0) < secondaryOnly.hottest_turn_temperature(1));
+    // Not checked: primaryOnly.hottest(0) > secondaryOnly.hottest(0). On the ER 35 fixture each strip (secondary) sheds its
+    // loss only through the primary bundles lying on it, so heating the secondary warms the primary more (main as well).
+    CHECK(secondaryOnly.hottest_turn_temperature(1) > primaryOnly.hottest_turn_temperature(1));
 
     for (size_t turn : even.of_part(ThermalNodePartType::TURN)) {
         const std::string& name = even.nodes[turn].name;
@@ -480,7 +494,8 @@ TEST_CASE("ThermalNetwork ABT 1540: stacked sections reach temperatures that fol
 
     const double rise = even.result.maximumTemperature - ambient;
     INFO("hot spot " << even.result.maximumTemperature << " C as stored, " << evenTaped.result.maximumTemperature << " C with 50 um tapes");
-    CHECK(std::abs(evenTaped.result.maximumTemperature - even.result.maximumTemperature) < 0.05 * rise);
+    // ABT #2433 (Alf, 2026-11-23): 10 %. Without the tape the faces of the sections partly open into the slot between them.
+    CHECK(std::abs(evenTaped.result.maximumTemperature - even.result.maximumTemperature) < 0.10 * rise);
 }
 
 TEST_CASE("ThermalNetwork ABT 1540: stored stacked-section designs simulate as the web loads them", "[temperature][abt-1540]") {
@@ -495,9 +510,19 @@ TEST_CASE("ThermalNetwork ABT 1540: stored stacked-section designs simulate as t
     OpenMagnetics::Mas simulated;
     REQUIRE_NOTHROW(simulated = magneticSimulator.simulate(autocompleted.get_inputs(), autocompleted.get_magnetic()));
     REQUIRE(simulated.get_outputs().size() == autocompleted.get_inputs().get_operating_points().size());
+    // ABT #2433 (Alf, 2026-11-23): a point whose winding the losses drive past its conductor's material data (the E 96
+    // 220 kW file published a 21,000 C hot spot) has no thermal operating point: it has no temperature, and
+    // analyze_results names it. Every other point has a temperature.
+    const auto findings = OpenMagnetics::ResultsAnalyzer::analyze_results(simulated);
     for (size_t index = 0; index < simulated.get_outputs().size(); ++index) {
         const auto& output = simulated.get_outputs()[index];
-        REQUIRE(output.get_temperature());
+        if (!output.get_temperature()) {
+            INFO("operating point " << index << " has no temperature");
+            CHECK(std::any_of(findings.begin(), findings.end(), [&](const auto& finding) {
+                return finding.code == OpenMagnetics::ResultFindingCode::NO_THERMAL_OPERATING_POINT && finding.operatingPointIndex == index;
+            }));
+            continue;
+        }
         double ambient = autocompleted.get_inputs().get_operating_points()[index].get_conditions().get_ambient_temperature();
         double maximumTemperature = output.get_temperature()->get_maximum_temperature();
         INFO("operating point " << index << ": ambient " << ambient << " C, maximum " << maximumTemperature << " C");
@@ -507,41 +532,36 @@ TEST_CASE("ThermalNetwork ABT 1540: stored stacked-section designs simulate as t
     settings.reset();
 }
 
-TEST_CASE("ThermalNetwork ABT 1540: a core driven past its Curie temperature is held at its data limit and reported", "[temperature][abt-1540][abt-1855]") {
-    // ABT #1855 (Alf, 2026-10-14, an explicit exception to the no-fallback rule): the PQ 35/40 file's
-    // 681 W of copper drive its DMR51W core (Curie 290 C) to about 800 C. The loss solve refused it at the
-    // Curie temperature; it now holds the core at the last temperature its data covers, magnetizes it
-    // with mu_r = 1, and analyze_results says so for that operating point.
+TEST_CASE("ThermalNetwork ABT 1540: a core driven past its Curie temperature whose winding runs past its copper's data has no operating point", "[temperature][abt-1540][abt-1855][abt-2433]") {
+    // ABT #1855 (Alf, 2026-10-14): the PQ 35/40 file's 681 W of copper drive its DMR51W core (Curie 290 C) past its Curie
+    // temperature, and the loss solve holds the core at the last temperature its data covers. Its winding then settled
+    // at 874 C on average, a 2453 C hot spot. ABT #2433 (Alf, 2026-11-23): a winding the loop drives past the hottest
+    // temperature its conductor's material data covers (copper: 927 C) runs away and has no thermal operating point;
+    // with the winding's real exposure in the network this one does. It gets no temperature, its losses at ambient,
+    // and analyze_results says the winding runs away. The hold itself keeps its own [abt-1855] tests.
     settings.reset();
     auto autocompleted = autocomplete_like_the_web(load_abt1540_fixture(kLitzAndStripPq3540));
-    auto coreMaterial = autocompleted.get_magnetic().get_core().resolve_material();
-    REQUIRE(coreMaterial.get_curie_temperature());
-    double curieTemperature = coreMaterial.get_curie_temperature().value();
     OpenMagnetics::MagneticSimulator magneticSimulator;
     OpenMagnetics::Mas simulated;
     REQUIRE_NOTHROW(simulated = magneticSimulator.simulate(autocompleted.get_inputs(), autocompleted.get_magnetic()));
     REQUIRE(!simulated.get_outputs().empty());
     const auto& output = simulated.get_outputs()[0];
+    CHECK_FALSE(output.get_temperature());
     REQUIRE(output.get_core_losses());
-    double coreLossesTemperature = output.get_core_losses()->get_temperature();
-    INFO("core losses at " << coreLossesTemperature << " C, hottest point " << output.get_temperature()->get_maximum_temperature() << " C");
-    CHECK(coreLossesTemperature < curieTemperature);
-    CHECK(coreLossesTemperature > curieTemperature - OpenMagnetics::MagneticSimulator::kOperatingTemperatureTolerance);
-    CHECK(output.get_temperature()->get_maximum_temperature() > curieTemperature);
+    CHECK(output.get_core_losses()->get_temperature() == autocompleted.get_inputs().get_operating_points()[0].get_conditions().get_ambient_temperature());
 
     auto findings = OpenMagnetics::ResultsAnalyzer::analyze_results(simulated);
-    size_t dataLimitFindings = 0;
+    size_t runawayFindings = 0;
     for (const auto& finding : findings) {
         INFO(finding.message);
-        if (finding.code == OpenMagnetics::ResultFindingCode::CORE_ABOVE_MATERIAL_DATA_LIMIT) {
-            ++dataLimitFindings;
+        if (finding.code == OpenMagnetics::ResultFindingCode::NO_THERMAL_OPERATING_POINT) {
+            ++runawayFindings;
             CHECK(finding.operatingPointIndex == 0);
-            CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring("Curie temperature") &&
-                                        Catch::Matchers::ContainsSubstring("no longer magnetic") &&
-                                        Catch::Matchers::ContainsSubstring("real temperature is higher"));
+            CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring("the winding runs away") &&
+                                        Catch::Matchers::ContainsSubstring("conductor's material data"));
         }
     }
-    CHECK(dataLimitFindings == 1);
+    CHECK(runawayFindings == 1);
     settings.reset();
 }
 

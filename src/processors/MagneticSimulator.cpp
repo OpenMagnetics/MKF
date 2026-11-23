@@ -468,6 +468,27 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
     // compute and no turn nodes to put them in (the core advisers' sentinel-coil candidates): the
     // core is then solved on the core-only network with its own losses.
     const bool withWinding = magnetic.get_coil().get_turns_description().has_value();
+    // ABT #2433 (Alf, 2026-11-23): the hottest temperature the conductors' own material data covers (the end of their
+    // thermal-conductivity tables: copper 927 C, aluminium 527 C, both below melting). Past it nothing describes the
+    // conductor, and the linear resistivity the winding losses take there gives fixed points no copper reaches: the
+    // 220 kW transformer "settled" with its winding at 3442 C. A winding the loop drives past it has no thermal
+    // operating point, the same answer as a winding that runs away.
+    std::optional<double> conductorDataLimit;
+    std::optional<std::pair<double, double>> previousWindingIterate;  // (T_w the losses were taken at, T_turn they produced)
+    if (withWinding) {
+        auto coil = magnetic.get_coil();
+        for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
+            const auto material = Wire::resolve_material(coil.resolve_wire(windingIndex));
+            const auto table = material.get_thermal_conductivity();
+            if (!table || table->empty()) {
+                throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING, "Wire material " + material.get_name() +
+                                        " has no thermal conductivity data: the temperatures its data covers are unknown");
+            }
+            double hottest = table->front().get_temperature();
+            for (const auto& point : table.value()) hottest = std::max(hottest, point.get_temperature());
+            conductorDataLimit = conductorDataLimit ? std::min(conductorDataLimit.value(), hottest) : hottest;
+        }
+    }
     // Settings::simulatorLossTemperatureLoop off (a user choice for simulate and the builder; advisers read it
     // on, see Settings::get_simulator_loss_temperature_loop): no loop. The first iterate below IS the one pass --
     // core and winding losses at the operating temperature, the network run once on them for the hottest
@@ -791,6 +812,21 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
              std::fabs(nextWindingTemperature - windingTemperature) < kOperatingTemperatureTolerance)) {
             // Converged (loop on): the losses were evaluated at temperatures within the tolerance of the
             // ones these very losses produce.
+            if (lossTemperatureLoop && withWinding && nextWindingTemperature > conductorDataLimit.value()) {
+                std::ostringstream details;
+                details << "Winding losses " << format_quantity(windingLosses->get_winding_losses(), "W") << " at "
+                        << format_significant(windingTemperature) << " C give an average turn temperature of " << format_significant(nextWindingTemperature) << " C";
+                if (previousWindingIterate && windingTemperature != previousWindingIterate->first) {
+                    details << "; dT_turn/dT_w = "
+                            << format_significant((nextWindingTemperature - previousWindingIterate->second) / (windingTemperature - previousWindingIterate->first))
+                            << " over the last two iterates";
+                }
+                details << ". History:" << history;
+                throw NoThermalOperatingPointException(ErrorCode::CALCULATION_DIVERGED,
+                    "No steady temperature: the winding runs away thermally, past " + format_significant(conductorDataLimit.value()) +
+                    " C, the hottest its conductor's material data covers (its losses heat it to " + format_significant(nextWindingTemperature) + " C).",
+                    lossesAtAmbient.value(), details.str());
+            }
             SolvedLosses solved;
             solved.coreLosses = coreLossesOutput;
             solved.excitation = excitation;
@@ -825,6 +861,9 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
             temperatureOutput.set_origin(ResultOrigin::SIMULATION);
             solved.temperature = temperatureOutput;
             return solved;
+        }
+        if (withWinding) {
+            previousWindingIterate = std::make_pair(windingTemperature, nextWindingTemperature);
         }
         // Winding runaway (Alf, 2026-10-14, ABT #1855). Held at the ceiling, the core's losses and
         // temperature are fixed, and what is left is the one-dimensional map T_w -> g(T_w): the average

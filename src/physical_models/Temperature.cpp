@@ -2444,6 +2444,185 @@ TurnOutlineGap turnOutlineGap(const ThermalNetworkNode& node1, const ThermalNetw
     }
     return gap;
 }
+
+// The face of `from` that looks at `to`, for a pair facing horizontally (radial faces) or along the axis.
+ThermalNodeFace faceToward(const ThermalNetworkNode& from, const ThermalNetworkNode& to, bool horizontal) {
+    if (horizontal) {
+        return from.physicalCoordinates[0] > to.physicalCoordinates[0] ? ThermalNodeFace::RADIAL_INNER : ThermalNodeFace::RADIAL_OUTER;
+    }
+    return from.physicalCoordinates[1] > to.physicalCoordinates[1] ? ThermalNodeFace::TANGENTIAL_RIGHT : ThermalNodeFace::TANGENTIAL_LEFT;
+}
+
+// ABT #2433: the turns a turn face looks at, at any distance: each with the surface gap (0 when the outlines touch or
+// penetrate) and the share of the face it covers that no nearer turn already covers (the turns are taken nearest
+// first, so two staggered neighbours each cover their own half and the result does not depend on the search order).
+// The heat a face exchanges with those turns, by conduction across the gap and by convection out of the slot between
+// them, follows the gap continuously; distance thresholds switched both on and off between neighbouring turn counts.
+struct FacingTurn {
+    size_t nodeIdx;
+    double gap;
+    double share;
+};
+struct FaceCover {
+    std::vector<FacingTurn> facing;  // turns covering parts of the face, nearest first
+    double openStrips = 0;           // share of the face no turn covers, weighted by how open each strip is
+};
+bool isRadialFace(ThermalNodeFace face) { return face == ThermalNodeFace::RADIAL_INNER || face == ThermalNodeFace::RADIAL_OUTER; }
+
+// The part of a slot `gap` wide between two faces `extent` across that is closed: it conducts across the gap and does
+// not reach the room. A slot wider than both walls together is open air; between the two the share goes linearly.
+double closedSlotShare(double gap, double extent) { return 1.0 - std::min(1.0, gap / (2.0 * extent)); }
+
+// A strip of a face that no turn covers is not open air when it lies between two turns of the row in front of it (a
+// staggered layer over another, the last layer with one turn less): it is the bottom of the slot between them, open as
+// that slot is, width / (2 x depth), and more as the row stands further off. Taken as open, a staggered layer cooled
+// its inner neighbours by a third more than the aligned one at the next turn count.
+std::map<std::pair<size_t, ThermalNodeFace>, FaceCover> visibleFacingTurns(const std::vector<ThermalNetworkNode>& nodes,
+                                                                          const std::vector<size_t>& turnNodeIndices) {
+    struct Candidate {
+        size_t nodeIdx;
+        double gap;
+        double low;
+        double high;
+    };
+    std::map<std::pair<size_t, ThermalNodeFace>, std::vector<Candidate>> candidates;
+    for (size_t a = 0; a < turnNodeIndices.size(); ++a) {
+        for (size_t b = a + 1; b < turnNodeIndices.size(); ++b) {
+            const size_t i = turnNodeIndices[a], j = turnNodeIndices[b];
+            const TurnOutlineGap outlineGap = turnOutlineGap(nodes[i], nodes[j]);
+            if (!outlineGap.facing) continue;
+            const double gap = std::max(outlineGap.distance, 0.0);
+            for (const auto& [from, to] : {std::pair{i, j}, std::pair{j, i}}) {
+                const ThermalNodeFace face = faceToward(nodes[from], nodes[to], outlineGap.horizontal);
+                const size_t across = isRadialFace(face) ? 1 : 0;
+                const double halfExtent = (isRadialFace(face) ? nodes[from].dimensions.height : nodes[from].dimensions.width) / 2.0;
+                const double otherHalfExtent = (isRadialFace(face) ? nodes[to].dimensions.height : nodes[to].dimensions.width) / 2.0;
+                const double centre = nodes[from].physicalCoordinates[across];
+                const double otherCentre = nodes[to].physicalCoordinates[across];
+                const double low = std::max(centre - halfExtent, otherCentre - otherHalfExtent);
+                const double high = std::min(centre + halfExtent, otherCentre + otherHalfExtent);
+                if (high - low <= kEnclosureGeometryTolerance) continue;
+                candidates[{from, face}].push_back({to, gap, low, high});
+            }
+        }
+    }
+    // The row in front of a face: every turn ahead of it along the face's normal, wherever it lies across.
+    struct Ahead {
+        double gap;    // along the normal, between the bounding outlines
+        double low;    // its span across
+        double high;
+        double depth;  // its extent along the normal
+    };
+    auto aheadOf = [&](size_t from, ThermalNodeFace face) {
+        const bool radial = isRadialFace(face);
+        const size_t normal = radial ? 0 : 1, across = radial ? 1 : 0;
+        const double direction = (face == ThermalNodeFace::RADIAL_OUTER || face == ThermalNodeFace::TANGENTIAL_LEFT) ? 1.0 : -1.0;
+        const auto& turn = nodes[from];
+        const double normalExtent = radial ? turn.dimensions.width : turn.dimensions.height;
+        std::vector<Ahead> ahead;
+        for (size_t other : turnNodeIndices) {
+            if (other == from) continue;
+            const auto& node = nodes[other];
+            const double otherNormalExtent = radial ? node.dimensions.width : node.dimensions.height;
+            const double otherAcrossExtent = radial ? node.dimensions.height : node.dimensions.width;
+            const double gap = (node.physicalCoordinates[normal] - turn.physicalCoordinates[normal]) * direction -
+                               (normalExtent + otherNormalExtent) / 2.0;
+            if (gap < -kEnclosureGeometryTolerance) continue;
+            ahead.push_back({std::max(gap, 0.0), node.physicalCoordinates[across] - otherAcrossExtent / 2.0,
+                             node.physicalCoordinates[across] + otherAcrossExtent / 2.0, otherNormalExtent});
+        }
+        return ahead;
+    };
+
+    std::map<std::pair<size_t, ThermalNodeFace>, FaceCover> visible;
+    for (size_t turnIdx : turnNodeIndices) {
+      for (ThermalNodeFace face : {ThermalNodeFace::RADIAL_INNER, ThermalNodeFace::RADIAL_OUTER, ThermalNodeFace::TANGENTIAL_LEFT,
+                                   ThermalNodeFace::TANGENTIAL_RIGHT}) {
+        const std::pair<size_t, ThermalNodeFace> key{turnIdx, face};
+        auto& list = candidates[key];
+        const auto& turn = nodes[key.first];
+        const bool radial = isRadialFace(key.second);
+        const double extent = radial ? turn.dimensions.height : turn.dimensions.width;
+        if (!(extent > 0)) {
+            throw std::runtime_error("Temperature::visibleFacingTurns: turn " + turn.name + " has no extent along its " +
+                                     std::string(magic_enum::enum_name(key.second)) + " face.");
+        }
+        std::sort(list.begin(), list.end(), [](const Candidate& a, const Candidate& b) {
+            return a.gap != b.gap ? a.gap < b.gap : a.low < b.low;
+        });
+        auto& cover = visible[key];
+        std::vector<std::pair<double, double>> covered;  // disjoint
+        for (const auto& candidate : list) {
+            // The part of [low, high] that no nearer turn covers.
+            std::vector<std::pair<double, double>> open{{candidate.low, candidate.high}};
+            for (const auto& [coveredLow, coveredHigh] : covered) {
+                std::vector<std::pair<double, double>> next;
+                for (const auto& [low, high] : open) {
+                    if (coveredHigh <= low || coveredLow >= high) {
+                        next.push_back({low, high});
+                        continue;
+                    }
+                    if (coveredLow > low) next.push_back({low, coveredLow});
+                    if (coveredHigh < high) next.push_back({coveredHigh, high});
+                }
+                open = std::move(next);
+            }
+            double openLength = 0;
+            for (const auto& [low, high] : open) openLength += high - low;
+            if (openLength <= kEnclosureGeometryTolerance) continue;
+            covered.insert(covered.end(), open.begin(), open.end());
+            cover.facing.push_back({candidate.nodeIdx, candidate.gap, std::min(openLength / extent, 1.0)});
+        }
+        // The strips no turn covers, and the slot each one is the bottom of.
+        std::sort(covered.begin(), covered.end());
+        const size_t across = radial ? 1 : 0;
+        const double faceLow = turn.physicalCoordinates[across] - extent / 2.0, faceHigh = turn.physicalCoordinates[across] + extent / 2.0;
+        std::vector<std::pair<double, double>> strips;
+        double cursor = faceLow;
+        for (const auto& [low, high] : covered) {
+            if (low > cursor + kEnclosureGeometryTolerance) strips.push_back({cursor, std::min(low, faceHigh)});
+            cursor = std::max(cursor, high);
+        }
+        if (faceHigh > cursor + kEnclosureGeometryTolerance) strips.push_back({cursor, faceHigh});
+        if (strips.empty()) continue;
+        const auto ahead = aheadOf(key.first, key.second);
+        for (const auto& [low, high] : strips) {
+            // The nearest turn in front on each side of the strip, among those standing over it no further than
+            // the nearest one does.
+            double rowGap = std::numeric_limits<double>::max();
+            for (const auto& wall : ahead) {
+                if (wall.high >= low - extent && wall.low <= high + extent) rowGap = std::min(rowGap, wall.gap);
+            }
+            const Ahead* left = nullptr;
+            const Ahead* right = nullptr;
+            for (const auto& wall : ahead) {
+                if (wall.gap > rowGap + kEnclosureGeometryTolerance) continue;
+                if (wall.high <= low + kEnclosureGeometryTolerance && (!left || wall.high > left->high)) left = &wall;
+                if (wall.low >= high - kEnclosureGeometryTolerance && (!right || wall.low < right->low)) right = &wall;
+            }
+            double exposure = 1.0;
+            if (left && right) {
+                const double slotWidth = right->low - left->high;
+                const double depth = std::min(left->depth, right->depth);
+                exposure = 1.0 - closedSlotShare(slotWidth, depth) * closedSlotShare(rowGap, extent);
+            }
+            cover.openStrips += exposure * (high - low) / extent;
+        }
+      }
+    }
+    return visible;
+}
+
+// The share of `from`'s face toward `to` that `to` covers (0 when a nearer turn hides it, or they do not face).
+double visibleShare(const std::map<std::pair<size_t, ThermalNodeFace>, FaceCover>& visible, size_t from,
+                    ThermalNodeFace face, size_t to) {
+    auto found = visible.find({from, face});
+    if (found == visible.end()) return 0.0;
+    for (const auto& facing : found->second.facing) {
+        if (facing.nodeIdx == to) return facing.share;
+    }
+    return 0.0;
+}
 } // namespace
 
 bool Temperature::isPlanarTurn(const ThermalNetworkNode& node) const {
@@ -2488,6 +2667,10 @@ void Temperature::createConcentricTurnToTurnConnections(const std::vector<size_t
     // NOTE: O(N^2) complexity over turn nodes. For designs with >1000 turns,
     // consider implementing spatial indexing (grid hash or k-d tree) for neighbor search.
     // Pure geometry-based connections - no layer or consecutiveness logic
+    // ABT #2433: a face conducts to every turn that covers part of it (visibleFacingTurns), at any gap, over the area that
+    // turn covers and across the air of the gap, so the conductance falls smoothly with the gap. It used to conduct only
+    // below a surface distance of min(w, h) / 4, there as if the outlines touched, and not at all beyond.
+    const auto visibleFacing = visibleFacingTurns(_nodes, turnNodeIndices);
     for (size_t i = 0; i < turnNodeIndices.size(); i++) {
         size_t node1Idx = turnNodeIndices[i];
         const auto& node1 = _nodes[node1Idx];
@@ -2516,7 +2699,13 @@ void Temperature::createConcentricTurnToTurnConnections(const std::vector<size_t
             const bool throughBoard = surfaceDistance > thresholdDist && !outlineGap.horizontal &&
                                       isPlanarTurn(node1) && isPlanarTurn(node2) &&
                                       !turnBetweenAlongAxis(turnNodeIndices, node1Idx, node2Idx);
-            if (surfaceDistance > thresholdDist && !throughBoard) continue;
+            // The closed part of the slot each face covers conducts; the open part convects (createConcentricConvectionConnections).
+            const double gapBetween = std::max(surfaceDistance, 0.0);
+            const double share1 = visibleShare(visibleFacing, node1Idx, faceToward(node1, node2, outlineGap.horizontal), node2Idx) *
+                                  closedSlotShare(gapBetween, outlineGap.horizontal ? node1.dimensions.height : node1.dimensions.width);
+            const double share2 = visibleShare(visibleFacing, node2Idx, faceToward(node2, node1, outlineGap.horizontal), node1Idx) *
+                                  closedSlotShare(gapBetween, outlineGap.horizontal ? node2.dimensions.height : node2.dimensions.width);
+            if (!throughBoard && !(share1 > 0) && !(share2 > 0)) continue;
             
             // Find which quadrants are facing each other
             ThermalNodeFace face1, face2;
@@ -2559,7 +2748,8 @@ void Temperature::createConcentricTurnToTurnConnections(const std::vector<size_t
             auto* q2 = _nodes[node2Idx].getQuadrant(face2);
 
             if (q1 && q2) {
-                double contactArea = std::min(q1->surfaceArea, q2->surfaceArea);
+                double contactArea = throughBoard ? std::min(q1->surfaceArea, q2->surfaceArea)
+                                                  : std::max(share1 * q1->surfaceArea, share2 * q2->surfaceArea);
                 if (!_nodes[node1Idx].turnDescriptionIndex.has_value()) {
                     throw std::runtime_error("Temperature::createConcentricTurnToTurnConnections: Turn node " +
                                              _nodes[node1Idx].name + " is missing turnDescriptionIndex.");
@@ -2659,7 +2849,10 @@ void Temperature::createConcentricTurnToTurnConnections(const std::vector<size_t
                         r.resistance = ThermalResistance::calculateConductionResistance(surfaceDistance, kFR4_ThermalConductivity, contactArea);
                     }
                     else {
-                        r.resistance = getInsulationLayerThermalResistance(turn1Idx, turn2Idx, contactArea);
+                        // ABT #2433: and the air of the gap between the two outlines (0 when they touch); a pair a
+                        // fraction of a millimetre apart was joined as if touching up to the contact distance.
+                        r.resistance = getInsulationLayerThermalResistance(turn1Idx, turn2Idx, contactArea) +
+                                       std::max(surfaceDistance, 0.0) / (gapAirThermalConductivity() * contactArea);
                     }
                     
                     if (q1->coating.has_value()) {
@@ -6582,6 +6775,11 @@ void Temperature::createConcentricConvectionConnections(size_t ambientIdx, doubl
     std::set<std::string> connectedQuadrants;
     for (const auto& res : _resistances) {
         if (res.type == HeatTransferType::CONDUCTION) {
+            // ABT #2433: a turn's conduction to the turn it faces does not cover the face; how much of it still
+            // reaches the room through the slot between them is its exposure, below.
+            if (_nodes[res.nodeFromId].part == ThermalNodePartType::TURN && _nodes[res.nodeToId].part == ThermalNodePartType::TURN) {
+                continue;
+            }
             connectedQuadrants.insert(std::to_string(res.nodeFromId) + "_" + std::string(magic_enum::enum_name(res.quadrantFrom)));
             connectedQuadrants.insert(std::to_string(res.nodeToId) + "_" + std::string(magic_enum::enum_name(res.quadrantTo)));
         }
@@ -6601,7 +6799,94 @@ void Temperature::createConcentricConvectionConnections(size_t ambientIdx, doubl
         if (hasConcentricCoreNodes) {
             // Concentric core - quadrant-specific convection with symmetry boundary
             // connectedQuadrants already built above - reuse it
-            
+
+            // ABT #2433: a turn face looking at another turn across a slot loses heat to the room only through the slot's
+            // opening. The two walls of a slot together get no more than its width, gap / (2 x face extent) each, and the
+            // whole face once the slot is wider than both; an axial slot opens on the winding's outward side, so that
+            // share is scaled by how much of the turn's outward side sees past the winding. The faces used to convect
+            // fully up to a pitch of 1.5 turn sizes and not at all below it: one turn more moved a layer across that step.
+            std::vector<size_t> turnNodeIndices;
+            for (size_t i = 0; i < _nodes.size(); ++i) {
+                if (_nodes[i].part == ThermalNodePartType::TURN) turnNodeIndices.push_back(i);
+            }
+            const auto visibleFacing = visibleFacingTurns(_nodes, turnNodeIndices);
+            // The depth an axial slot (between two turns of a layer) runs before it reaches the room: from the turn's
+            // inner edge to the outer surface of the winding over it, whether the layers above are aligned with it or
+            // staggered (its share unshadowed by the next layer made a staggered layer's slots open and an aligned
+            // one's closed: a 50 K odd/even zig-zag over the turn count).
+            std::vector<double> outwardSlotDepth(_nodes.size(), 0.0);
+            // The spans along the axis of everything over each turn (turns and insulation further out): what can cap
+            // the mouth of the slot beside it (a foil or tape layer over the whole height caps every slot under it).
+            std::vector<std::vector<std::pair<double, double>>> outwardSpans(_nodes.size());
+            {
+                std::map<std::optional<size_t>, std::vector<WindingItem>> itemsPerColumn;
+                for (const auto& item : collectWindingItems(_nodes)) {
+                    itemsPerColumn[_lateralPlacement ? _nodes[item.nodeIdx].woundColumnIndex : std::nullopt].push_back(item);
+                }
+                for (const auto& [column, items] : itemsPerColumn) {
+                    const auto& first = _nodes[items.front().nodeIdx];
+                    const bool outwardIsLow = isLateralWound(first) && lateralSide(first) > 0;
+                    for (const auto& item : items) {
+                        if (_nodes[item.nodeIdx].part != ThermalNodePartType::TURN) continue;
+                        double outerEdge = outwardIsLow ? item.x0 : item.x1;
+                        for (const auto& other : items) {
+                            const bool overlapsAlongAxis = std::min(item.y1, other.y1) - std::max(item.y0, other.y0) > kEnclosureGeometryTolerance;
+                            if (!overlapsAlongAxis) continue;
+                            if (outwardIsLow ? other.x1 <= item.x1 + kEnclosureGeometryTolerance
+                                             : other.x0 >= item.x0 - kEnclosureGeometryTolerance) {
+                                outerEdge = outwardIsLow ? std::min(outerEdge, other.x0) : std::max(outerEdge, other.x1);
+                            }
+                        }
+                        for (const auto& other : items) {
+                            if (other.nodeIdx == item.nodeIdx) continue;
+                            const bool further = outwardIsLow ? other.x1 <= item.x0 + kEnclosureGeometryTolerance
+                                                              : other.x0 >= item.x1 - kEnclosureGeometryTolerance;
+                            if (further) outwardSpans[item.nodeIdx].push_back({other.y0, other.y1});
+                        }
+                        outwardSlotDepth[item.nodeIdx] = outwardIsLow ? item.x1 - outerEdge : outerEdge - item.x0;
+                    }
+                }
+            }
+            auto turnFaceExposure = [&](size_t nodeIdx, ThermalNodeFace face) {
+                auto found = visibleFacing.find({nodeIdx, face});
+                if (found == visibleFacing.end()) return 1.0;
+                const auto& turn = _nodes[nodeIdx];
+                const double extent = isRadialFace(face) ? turn.dimensions.height : turn.dimensions.width;
+                // An axial slot (between turns of a layer) opens through the winding's build over it; a radial one
+                // (between layers, or across the window to another winding) along its length.
+                const double slotDepth = isRadialFace(face) ? extent : outwardSlotDepth[nodeIdx];
+                if (!(slotDepth > 0)) {
+                    throw std::runtime_error("Temperature::createConcentricConvectionConnections: turn " + turn.name +
+                                             " has no slot depth on its " + std::string(magic_enum::enum_name(face)) + " face.");
+                }
+                // The share of an axial slot's mouth that nothing further out covers.
+                auto openMouth = [&](double gap) {
+                    if (isRadialFace(face) || !(gap > kEnclosureGeometryTolerance)) return 1.0;
+                    const double edge = face == ThermalNodeFace::TANGENTIAL_LEFT ? turn.physicalCoordinates[1] + turn.dimensions.height / 2.0
+                                                                                 : turn.physicalCoordinates[1] - turn.dimensions.height / 2.0 - gap;
+                    std::vector<std::pair<double, double>> spans;
+                    for (const auto& [low, high] : outwardSpans[nodeIdx]) {
+                        const double a = std::max(low, edge), b = std::min(high, edge + gap);
+                        if (b > a) spans.push_back({a, b});
+                    }
+                    std::sort(spans.begin(), spans.end());
+                    double covered = 0, cursor = edge;
+                    for (const auto& [a, b] : spans) {
+                        if (b > cursor) {
+                            covered += b - std::max(a, cursor);
+                            cursor = b;
+                        }
+                    }
+                    return std::max(0.0, 1.0 - covered / gap);
+                };
+                double exposure = found->second.openStrips;
+                for (const auto& facing : found->second.facing) {
+                    exposure += facing.share * openMouth(facing.gap) * (1.0 - closedSlotShare(facing.gap, slotDepth));
+                }
+                // A face its turns cover whole comes out at 1 - (shares summing to 1): rounding, not an opening.
+                return exposure < 1e-9 ? 0.0 : std::min(exposure, 1.0);
+            };
+
             for (size_t i = 0; i < _nodes.size(); i++) {
                 if (_nodes[i].part == ThermalNodePartType::AMBIENT) continue;
                 
@@ -6634,41 +6919,9 @@ void Temperature::createConcentricConvectionConnections(size_t ambientIdx, doubl
                         double turnX = _nodes[i].physicalCoordinates[0];
                         double turnY = _nodes[i].physicalCoordinates[1];
                         
-                        // Determine direction based on face
-                        double dirX = 0.0, dirY = 0.0;
-                        if (face == ThermalNodeFace::RADIAL_INNER) dirX = -1.0;
-                        else if (face == ThermalNodeFace::RADIAL_OUTER) dirX = 1.0;
-                        else if (face == ThermalNodeFace::TANGENTIAL_LEFT) dirY = 1.0;
-                        else if (face == ThermalNodeFace::TANGENTIAL_RIGHT) dirY = -1.0;
-                        
-                        // Check for blocking turns in that direction
                         double turnWidth = _nodes[i].dimensions.width;
                         double turnHeight = _nodes[i].dimensions.height;
-                        
-                        for (size_t j = 0; j < _nodes.size(); j++) {
-                            if (i == j) continue;
-                            if (_nodes[j].part != ThermalNodePartType::TURN) continue;
-                            
-                            double otherX = _nodes[j].physicalCoordinates[0];
-                            double otherY = _nodes[j].physicalCoordinates[1];
-                            double dx = otherX - turnX;
-                            double dy = otherY - turnY;
-                            
-                            // Check if other turn is in the blocking direction
-                            bool inDirection = false;
-                            if (dirX != 0.0 && std::abs(dy) < turnHeight && dx * dirX > 0 && std::abs(dx) < turnWidth * 1.5) {
-                                inDirection = true;
-                            }
-                            if (dirY != 0.0 && std::abs(dx) < turnWidth && dy * dirY > 0 && std::abs(dy) < turnHeight * 1.5) {
-                                inDirection = true;
-                            }
-                            
-                            if (inDirection) {
-                                isBlocked = true;
-                                break;
-                            }
-                        }
-                        
+
                         // Check if there's an insulation layer to the right of this turn
                         // If so, block RIGHT, TOP, and BOTTOM faces from convection
                         bool hasInsulationToRight = false;
@@ -6730,6 +6983,10 @@ void Temperature::createConcentricConvectionConnections(size_t ambientIdx, doubl
                         }
                         
                         if (isBlocked) continue;
+
+                        const double exposure = turnFaceExposure(i, face);
+                        _nodes[i].getQuadrant(face)->surfaceCoverage = exposure;
+                        if (!(exposure > 0)) continue;
                     }
                     
                     // All other exposed quadrants get convection

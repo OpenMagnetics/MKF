@@ -1569,7 +1569,10 @@ TEST_CASE("Coil adviser rejects a coil whose core saturates at its operating tem
         auto noResultsReason = coilAdviser.get_last_no_results_reason();
         REQUIRE(noResultsReason.has_value());
         CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("rejected by the temperature limit"));
-        CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("saturates at the temperature its losses heat it to"));
+        // ABT #2433 (Alf approved 2026-11-23): with the winding's real exposure in the thermal network, its 93.9 W drive it
+        // past copper's 927 C data limit before the core's saturation is judged, so the reason may name either.
+        CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("saturates at the temperature its losses heat it to") ||
+                                     Catch::Matchers::ContainsSubstring("the winding runs away"));
     }
     // Since ABT #1855 (Alf approved this rewrite 2026-10-14) the loss-temperature solve no longer throws
     // for a saturated core: the losses filter gives the solved outputs and refuses the coil, and the
