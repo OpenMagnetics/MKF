@@ -2221,6 +2221,7 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
     // secant through the incremental curve; it diverges wherever |dµ/dH|·B/(µ0·µ²) > 1,
     // the knee of any ferrite, ran away to a saturated permeability, and the search then
     // clamped at the residual gap for any target above a few tens of µH.
+    bool solvedUnderDcBias = false;
     if (excitationHasMagnetizingCurrent) {
         auto magneticFlux = OpenMagnetics::MagneticField::calculate_magnetic_flux(mas_access::magnetizing_current_ref(operatingPoint.get_excitations_per_winding()[0]).value(), neededTotalReluctance, numberTurnsPrimary, operatingPoint.get_excitations_per_winding()[0].get_frequency());
         auto magneticFluxDensity = OpenMagnetics::MagneticField::calculate_magnetic_flux_density(magneticFlux, effectiveArea);
@@ -2229,6 +2230,7 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
         double biasFluxDensity = calculate_bias_flux_density(magneticFluxDensity, Inputs::get_switching_frequency(operatingPoint.get_excitations_per_winding()[0]));
         auto material = core.resolve_material();
         std::optional<DcBiasPoint> dcBiasPoint;
+        solvedUnderDcBias = biasFluxDensity > 0;
         if (biasFluxDensity > 0) {
             double biasFieldStrength = InitialPermeability::get_magnetic_field_dc_bias_for_flux_density(material, biasFluxDensity, temperature, frequency);
             currentInitialPermeability = initialPermeability.get_initial_permeability(material, temperature, biasFieldStrength, frequency);
@@ -2366,6 +2368,225 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
 
             timeout--;
         }
+    }
+
+    // ABT #2502 follow-up (Alf, 2026-11-23): under a DC bias the search above sizes the gap with the flux the target
+    // imposes through the needed reluctance, a straight line, and reads the material's permeability once at that
+    // bias. The inductance model reads the same design on the B(H) curve (the gap's load line, the peak anchor of
+    // ABT #2502), and near the knee the two part: on the ABT #1809 flyback (E 42/21/15 DMR96, 20:20 turns, 12-14 A at
+    // 100 kHz) a gap solved for 75 uH read back 72.3 uH, one for 80 uH 52 uH and one for 85 uH 1 uH, a collapsed core
+    // returned as a design. The gap is now the one at which the model itself gives the target, on the model's stable
+    // branch, where the inductance falls as the gap grows. Below the gap of its peak the bias pushes the core into its
+    // knee and the inductance falls as the gap shrinks (72.4 uH at 1.59 mm on that flyback, 41 uH at 1.1 mm). When no
+    // gap reaches the target, that is said with the largest inductance found.
+    if (solvedUnderDcBias) {
+        const double modelTolerance = 0.001;  // The reluctance search's own.
+        const double gapStep = 1.1;
+        const size_t maximumModelEvaluations = 80;
+        size_t modelEvaluations = 0;
+        // The operating point as the design will be evaluated: inputs' own, edited in place above when it is.
+        const OperatingPoint operatingPointOfDesign = inputs->get_operating_points()[0];
+        std::pair<MagnetizingInductanceOutput, SignalDescriptor> lastModelResult;
+        // The largest inductance the model gave on the way, and its gap: what is reported when no gap holds the target.
+        double largestInductance = 0;
+        double largestInductanceGap = 0;
+        auto build_gapped_core = [&](double length) -> Core {
+            switch (gappingType) {
+                case GappingType::GROUND:
+                    return get_core_with_ground_gapping(core, length);
+                case GappingType::SPACER:
+                    return get_core_with_spacer_gapping(core, length);
+                case GappingType::DISTRIBUTED:
+                    return get_core_with_distributed_gapping(core, length, numberDistributedGaps);
+                default:
+                    throw GapException("Unknown type of gap, options are {GROUND, SPACER, DISTRIBUTED}");
+            }
+        };
+        auto model_inductance = [&](double length) -> double {
+            if (modelEvaluations == maximumModelEvaluations) {
+                std::ostringstream reason;
+                reason << "The gap of core '" << core.get_name().value_or("unnamed") << "' for " << desiredMagnetizingInductance * 1e6
+                       << " uH with " << numberTurnsPrimary << " turns did not settle on the inductance model in " << maximumModelEvaluations
+                       << " evaluations (last gap " << length * 1e3 << " mm)";
+                throw GapException(reason.str());
+            }
+            ++modelEvaluations;
+            auto evaluatedOperatingPoint = operatingPointOfDesign;
+            lastModelResult = calculate_inductance_and_magnetic_flux_density(build_gapped_core(length), coil, &evaluatedOperatingPoint);
+            const double modelInductance = resolve_dimensional_values(lastModelResult.first.get_magnetizing_inductance());
+            if (modelInductance > largestInductance) {
+                largestInductance = modelInductance;
+                largestInductanceGap = length;
+            }
+            return modelInductance;
+        };
+        auto no_gap_holds_it = [&](std::optional<std::pair<double, double>> unbiasedBound) {
+            std::ostringstream reason;
+            reason << "No gap of core '" << core.get_name().value_or("unnamed") << "' holds " << desiredMagnetizingInductance * 1e6
+                   << " uH with " << numberTurnsPrimary << " turns under this DC bias: the gaps tried give at most " << largestInductance * 1e6
+                   << " uH (a " << largestInductanceGap * 1e3 << " mm gap), a smaller gap lets the bias push the core into its knee";
+            if (unbiasedBound) {
+                reason << ", and from " << unbiasedBound->first * 1e3 << " mm up even the unbiased core gives only " << unbiasedBound->second * 1e6 << " uH";
+            }
+            else {
+                reason << ", and the gap reached the full " << maximumGapLength.value() * 1e3 << " mm of the winding column";
+            }
+            return SaturationException(reason.str());
+        };
+        auto last_point_saturates = [&]() {
+            return ResultsAnalyzer::check_saturation(core.resolve_material(), ResultsAnalyzer::get_peak_flux_density(lastModelResult.second),
+                                                     temperature, 1.0, get_last_dc_bias_point()).saturates;
+        };
+        auto bounded_upwards = [&](double length) {
+            return maximumGapLength ? std::min(length, maximumGapLength.value()) : length;
+        };
+        auto above_column = [&](double inductance) {
+            std::ostringstream reason;
+            reason << "No gap of core '" << core.get_name().value_or("unnamed") << "' brings " << numberTurnsPrimary << " turns down to "
+                   << desiredMagnetizingInductance * 1e6 << " uH under this DC bias: a gap the full " << maximumGapLength.value() * 1e3
+                   << " mm of its winding column still gives " << inductance * 1e6 << " uH";
+            return GapException(reason.str());
+        };
+
+        double gap = gapLength;
+        double inductance = model_inductance(gap);
+        if (fabs(inductance / desiredMagnetizingInductance - 1) > modelTolerance) {
+            // A bracket on the stable branch: inductance at least the target at the smaller gap, at most at the larger.
+            double smallerGap, smallerGapInductance, largerGap, largerGapInductance;
+            // Set when the stable branch is short of the target down to the residual gap, which is then the answer.
+            bool atResidualGap = false;
+            auto bracket_upwards = [&](double fromGap, double fromInductance) {
+                // From a gap whose inductance exceeds the target, grow the gap until it no longer does: a crossing
+                // downwards as the gap grows is on the stable branch.
+                while (true) {
+                    if (maximumGapLength && fromGap >= maximumGapLength.value()) {
+                        throw above_column(fromInductance);
+                    }
+                    double nextGap = bounded_upwards(fromGap * gapStep);
+                    double nextInductance = model_inductance(nextGap);
+                    if (nextInductance <= desiredMagnetizingInductance) {
+                        smallerGap = fromGap;
+                        smallerGapInductance = fromInductance;
+                        largerGap = nextGap;
+                        largerGapInductance = nextInductance;
+                        return;
+                    }
+                    fromGap = nextGap;
+                    fromInductance = nextInductance;
+                }
+            };
+            if (inductance > desiredMagnetizingInductance) {
+                bracket_upwards(gap, inductance);
+            }
+            else {
+                // Short of the target. On the stable branch the inductance rises as the gap shrinks, up to a peak below
+                // which the bias pushes the core into its knee: shrink while it rises. Anywhere else (a core collapsed
+                // at this gap, or past that peak) the target, if any gap reaches it, lies at a larger gap: climb,
+                // stepping at least a tenth of a millimetre (a collapsed core reads flat at the residual gap), until the
+                // inductance reaches it. Between the knee and the peak the inductance can fall as the gap grows before
+                // it rises to the peak, so the climb ends only where no larger gap can reach the target: a DC bias only
+                // lowers the material's permeability, so a gap whose unbiased inductance is short of the target bounds
+                // every larger one.
+                bool bracketed = false;
+                if (!last_point_saturates()) {
+                    double previousGap = gap;
+                    double previousInductance = inductance;
+                    bool risesAsTheGapShrinks = true;
+                    if (previousGap <= constants.residualGap) {
+                        risesAsTheGapShrinks = model_inductance(bounded_upwards(previousGap * gapStep)) < previousInductance;
+                    }
+                    while (risesAsTheGapShrinks && previousGap > constants.residualGap) {
+                        double nextGap = std::max(constants.residualGap, previousGap / gapStep);
+                        double nextInductance = model_inductance(nextGap);
+                        if (nextInductance >= desiredMagnetizingInductance) {
+                            smallerGap = nextGap;
+                            smallerGapInductance = nextInductance;
+                            largerGap = previousGap;
+                            largerGapInductance = previousInductance;
+                            bracketed = true;
+                            break;
+                        }
+                        if (nextInductance < previousInductance) {
+                            risesAsTheGapShrinks = false;
+                            break;
+                        }
+                        previousGap = nextGap;
+                        previousInductance = nextInductance;
+                    }
+                    if (!bracketed && risesAsTheGapShrinks) {
+                        // The stable branch reaches the residual gap short of the target: the residual gap, which the
+                        // search above returns for a target beyond it without a bias too.
+                        atResidualGap = true;
+                        gap = constants.residualGap;
+                        inductance = model_inductance(gap);
+                    }
+                }
+                if (!bracketed && !atResidualGap) {
+                    const double unbiasedPermeability = initialPermeability.get_initial_permeability(core.resolve_material(), temperature, std::nullopt, frequency);
+                    double climbingGap = gap;
+                    while (true) {
+                        if (maximumGapLength && climbingGap >= maximumGapLength.value()) {
+                            throw no_gap_holds_it(std::nullopt);
+                        }
+                        climbingGap = bounded_upwards(std::max(climbingGap * gapStep, climbingGap + 1e-4));
+                        const double unbiasedInductance = pow(numberTurnsPrimary, 2) /
+                            reluctanceModel->get_core_reluctance(build_gapped_core(climbingGap), unbiasedPermeability).get_core_reluctance();
+                        if (unbiasedInductance < desiredMagnetizingInductance) {
+                            throw no_gap_holds_it(std::make_pair(climbingGap, unbiasedInductance));
+                        }
+                        double climbingInductance = model_inductance(climbingGap);
+                        if (climbingInductance >= desiredMagnetizingInductance) {
+                            bracket_upwards(climbingGap, climbingInductance);
+                            break;
+                        }
+                    }
+                }
+            }
+            if (!atResidualGap) {
+                // Regula falsi (Illinois) on the bracket.
+                double smallerGapExcess = smallerGapInductance - desiredMagnetizingInductance;
+                double largerGapExcess = largerGapInductance - desiredMagnetizingInductance;
+                int lastMovedEnd = 0;
+                while (true) {
+                    gap = smallerGap - smallerGapExcess * (largerGap - smallerGap) / (largerGapExcess - smallerGapExcess);
+                    if (!(gap > smallerGap && gap < largerGap)) {
+                        gap = 0.5 * (smallerGap + largerGap);
+                    }
+                    inductance = model_inductance(gap);
+                    double excess = inductance - desiredMagnetizingInductance;
+                    if (fabs(excess) <= modelTolerance * desiredMagnetizingInductance) {
+                        break;
+                    }
+                    if (excess > 0) {
+                        smallerGap = gap;
+                        smallerGapExcess = excess;
+                        if (lastMovedEnd == -1) {
+                            largerGapExcess /= 2;
+                        }
+                        lastMovedEnd = -1;
+                    }
+                    else {
+                        largerGap = gap;
+                        largerGapExcess = excess;
+                        if (lastMovedEnd == 1) {
+                            smallerGapExcess /= 2;
+                        }
+                        lastMovedEnd = 1;
+                    }
+                }
+            }
+        }
+        // The design is refused when the model flags it saturated at that gap (ABT #1855), as above at the target's flux.
+        const auto lastDcBiasPoint = get_last_dc_bias_point();
+        const auto saturation = ResultsAnalyzer::check_saturation(core.resolve_material(), ResultsAnalyzer::get_peak_flux_density(lastModelResult.second),
+                                                                  temperature, 1.0, lastDcBiasPoint);
+        if (saturation.saturates) {
+            std::ostringstream reason;
+            reason << "No gap of core '" << core.get_name().value_or("unnamed") << "' holds " << desiredMagnetizingInductance * 1e6
+                   << " uH with " << numberTurnsPrimary << " turns and a core that is not saturated: " << saturation.message;
+            throw SaturationException(reason.str());
+        }
+        gapLength = gap;
     }
 
     gapLength = std::max(constants.residualGap, roundFloat(gapLength, decimals));

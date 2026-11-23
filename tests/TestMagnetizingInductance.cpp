@@ -3718,3 +3718,67 @@ TEST_CASE("Test_Gapping_Of_A_Line_Cycle_Record_Meets_Its_Target_Under_The_Induct
     }
     settings.reset();
 }
+
+TEST_CASE("Test_Gapping_Of_A_Flyback_Near_The_Knee_Meets_Its_Target_Under_The_Inductance_Model", "[physical-model][magnetizing-inductance][gapping][dc-bias][abt-2502]") {
+    // The ABT #1809 flyback (E 42/21/15 DMR96, 20:20, CCM 12 -> 14 A at 100 kHz). The gap solve used to size the gap
+    // with the flux the target imposes through the needed reluctance, a straight line, while the inductance model
+    // reads the design on the B(H) curve: near the knee the gap it returned for 70 uH read back 69.5 uH, for 75 uH
+    // 72.3 uH, for 80 uH 52 uH and for 85 uH 1 uH, a collapsed core returned as a design. The gap is now the one at
+    // which the model gives the target. Under this bias no gap gives more than 72.4 uH (at 1.59 mm; a smaller gap
+    // lets the bias collapse the core), so 75 and 85 uH throw.
+    settings.reset();
+    clear_databases();
+    std::vector<int64_t> numberTurns = {20, 20};
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(OpenMagneticsTesting::get_quick_magnetic(
+        "E 42/21/15", OpenMagneticsTesting::get_ground_gap(0.001), numberTurns, 1, "DMR96"));
+    json operatingPointJson;
+    operatingPointJson["conditions"]["ambientTemperature"] = 25;
+    json primary;
+    primary["frequency"] = 100000;
+    primary["name"] = "Primary";
+    primary["current"]["waveform"]["time"] = {0, 5e-6, 5e-6, 1e-5};
+    primary["current"]["waveform"]["data"] = {12, 14, 0, 0};
+    primary["voltage"]["waveform"]["time"] = {0, 5e-6, 5e-6, 1e-5};
+    primary["voltage"]["waveform"]["data"] = {20, 20, -20, -20};
+    json secondary;
+    secondary["frequency"] = 100000;
+    secondary["name"] = "Secondary";
+    secondary["current"]["waveform"]["time"] = {0, 5e-6, 5e-6, 1e-5};
+    secondary["current"]["waveform"]["data"] = {0, 0, 14, 12};
+    secondary["voltage"]["waveform"]["time"] = {0, 5e-6, 5e-6, 1e-5};
+    secondary["voltage"]["waveform"]["data"] = {-20, -20, 20, 20};
+    operatingPointJson["excitationsPerWinding"] = {primary, secondary};
+    auto inputs_for = [&](double target) {
+        json inputsJson;
+        inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = target;
+        inputsJson["designRequirements"]["turnsRatios"] = json::array({json{{"nominal", 1.0}}});
+        inputsJson["designRequirements"]["topology"] = "Flyback Converter";
+        inputsJson["operatingPoints"] = json::array({operatingPointJson});
+        return OpenMagnetics::Inputs(inputsJson, false);
+    };
+    auto core = magnetic.get_core();
+    auto coil = magnetic.get_coil();
+
+    for (double target : {60e-6, 65e-6, 70e-6}) {
+        MagnetizingInductance model;
+        model.set_topology(MAS::Topology::FLYBACK_CONVERTER);
+        auto inputs = inputs_for(target);
+        auto gapping = model.calculate_gapping_from_number_turns_and_inductance(core, coil, &inputs, GappingType::GROUND, 7);
+        auto gappedCore = core;
+        gappedCore.set_gapping(gapping);
+        gappedCore.process_gap();
+        OperatingPoint operatingPoint(operatingPointJson);
+        double inductance = resolve_dimensional_values(model.calculate_inductance_from_number_turns_and_gapping(gappedCore, coil, &operatingPoint).get_magnetizing_inductance());
+        INFO("target " << target * 1e6 << " uH: ground gap " << gapping[0].get_length() * 1e3 << " mm gives " << inductance * 1e6 << " uH");
+        CHECK_THAT(inductance, Catch::Matchers::WithinRel(target, 0.002));
+    }
+
+    MagnetizingInductance model;
+    model.set_topology(MAS::Topology::FLYBACK_CONVERTER);
+    for (double target : {75e-6, 85e-6}) {
+        INFO("target " << target * 1e6 << " uH");
+        auto beyondTheKnee = inputs_for(target);
+        REQUIRE_THROWS_AS(model.calculate_gapping_from_number_turns_and_inductance(core, coil, &beyondTheKnee, GappingType::GROUND, 7), SaturationException);
+    }
+    settings.reset();
+}
