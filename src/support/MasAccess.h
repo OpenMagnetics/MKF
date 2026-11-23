@@ -68,6 +68,8 @@ MKF_MAS_OPTIONAL_REF(PermeabilityPoint, modifiers,
 MKF_MAS_OPTIONAL_REF(MagneticCore, processed_description, std::optional<MAS::CoreProcessedDescription>)
 
 MKF_MAS_OPTIONAL_REF(Coil, turns_description, std::optional<std::vector<MAS::Turn>>)
+MKF_MAS_OPTIONAL_REF(Coil, layers_description, std::optional<std::vector<MAS::Layer>>)
+MKF_MAS_OPTIONAL_REF(Coil, sections_description, std::optional<std::vector<MAS::Section>>)
 
 MKF_MAS_OPTIONAL_REF(FieldPoint, label, std::optional<std::string>)
 

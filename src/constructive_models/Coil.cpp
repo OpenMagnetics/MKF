@@ -1,3 +1,4 @@
+#include "support/MasAccess.h"
 #include <iomanip>
 #include <sstream>
 #include <cmath>
@@ -802,7 +803,7 @@ void Coil::convert_turns_to_cartesian_coordinates() {
 
     double windingWindowRadialHeight = windingWindows[0].get_radial_height().value();
 
-    if (!get_turns_description()) {
+    if (!mas_access::turns_description_ref(*this)) {
         throw CoilNotProcessedException("Missing turns");
     }
 
@@ -834,7 +835,7 @@ void Coil::convert_turns_to_polar_coordinates() {
 
     double windingWindowRadialHeight = windingWindows[0].get_radial_height().value();
 
-    if (!get_turns_description()) {
+    if (!mas_access::turns_description_ref(*this)) {
         throw CoilNotProcessedException("Missing turns");
     }
 
@@ -927,7 +928,7 @@ Coil::Coil(const MAS::Coil coil, bool windInConstructor) {
     if (coil.get_turns_description()) {
         set_turns_description(coil.get_turns_description());
     }
-    if (get_sections_description()) {
+    if (mas_access::sections_description_ref(*this)) {
         // Externally-provided descriptions always sit at their FINAL multi-window
         // positions (the +x winding frame is transient inside wind()); without
         // this a later delimit_and_compact would re-compact mirrored-window
@@ -1079,7 +1080,7 @@ CoilAlignment Coil::get_turns_alignment(std::optional<std::string> sectionName) 
 
 WindingOrder Coil::get_winding_order(const std::string& sectionName) const {
     // Per-section override wins.
-    if (get_sections_description()) {
+    if (mas_access::sections_description_ref(*this)) {
         auto sections = get_sections_description().value();
         for (const auto& section : sections) {
             if (section.get_name() == sectionName) {
@@ -8316,7 +8317,7 @@ Coil::RidePlacement Coil::compute_ride_placement(const std::vector<ConnectionRou
     }
     std::map<std::string, size_t> turnIndexByName;
     std::vector<Turn> turns;
-    if (get_turns_description()) {
+    if (mas_access::turns_description_ref(*this)) {
         turns = get_turns_description().value();
         for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
             turnIndexByName[turns[turnIndex].get_name()] = turnIndex;
@@ -8821,7 +8822,7 @@ Coil::RidePlacement Coil::compute_ride_placement(const std::vector<ConnectionRou
 std::map<std::string, std::pair<uint64_t, uint64_t>> Coil::compute_connection_blocked_slots_per_layer(
         std::map<std::string, std::pair<double, double>>* freshDepths) {
     std::map<std::string, std::pair<uint64_t, uint64_t>> blockedSlotsPerLayer;  // layer name -> {top, bottom}
-    if (!get_layers_description()) {
+    if (!mas_access::layers_description_ref(*this)) {
         return blockedSlotsPerLayer;
     }
     // ABT #187: the top/bottom slot model below is rectangular (axial y). Toroidal blocking is
@@ -9030,7 +9031,7 @@ std::map<std::string, std::pair<double, double>> Coil::compute_u_landing_extra_d
     auto turns = get_turns_description().value();
     // ABT #683: the margin the landing layer's own section reserves, held by name.
     std::map<std::string, std::vector<double>> marginBySection;
-    if (get_sections_description()) {
+    if (mas_access::sections_description_ref(*this)) {
         auto sectionsForMargin = get_sections_description().value();
         for (const auto& section : sectionsForMargin) {
             marginBySection[section.get_name()] = resolve_margin(section);
@@ -9200,7 +9201,7 @@ std::map<std::string, std::pair<double, double>> Coil::compute_u_landing_extra_d
 }
 
 void Coil::redistribute_section_turns_for_blocking() {
-    if (!get_sections_description()) {
+    if (!mas_access::sections_description_ref(*this)) {
         return;
     }
     auto sections = get_sections_description().value();
@@ -11597,7 +11598,7 @@ void Coil::align_blocked_layer_turns() {
     auto turns = get_turns_description().value();
     // Held by name: the margin each layer must stay clear of belongs to its own section.
     std::vector<Section> sectionsForMargins;
-    if (get_sections_description()) {
+    if (mas_access::sections_description_ref(*this)) {
         sectionsForMargins = get_sections_description().value();
     }
     const bool stackedSections = sections_stacked_axially_on_concentric_core(*this);
@@ -12468,7 +12469,7 @@ void Coil::align_blocked_layer_turns() {
     // conduction layers, so the rects keep describing the geometry that is really there
     // (without it the section filling factors read over 1 on every design whose layers were
     // packed: 06, 11, 19, 23, 24 all reported "does not fit" while their copper fitted).
-    if (get_sections_description()) {
+    if (mas_access::sections_description_ref(*this)) {
         auto sections = get_sections_description().value();
         bool sectionsChanged = false;
         for (auto& section : sections) {
@@ -12525,7 +12526,7 @@ void Coil::align_blocked_layer_turns() {
 // stay exactly as it was; what changes is that a coil whose copper ends up outside its window
 // no longer reports success.
 bool Coil::are_turns_inside_winding_window() {
-    if (!get_turns_description()) {
+    if (!mas_access::turns_description_ref(*this)) {
         return true;
     }
     auto bobbin = resolve_bobbin();
@@ -12689,7 +12690,7 @@ bool Coil::are_insulation_layers_inside_winding_window() {
         }
         escapedAny = true;
     };
-    if (get_sections_description()) {
+    if (mas_access::sections_description_ref(*this)) {
         auto sections = get_sections_description().value();
         for (const auto& section : sections) {
             if (section.get_type() == ElectricalType::INSULATION) {
@@ -12697,7 +12698,7 @@ bool Coil::are_insulation_layers_inside_winding_window() {
             }
         }
     }
-    if (get_layers_description()) {
+    if (mas_access::layers_description_ref(*this)) {
         auto layers = get_layers_description().value();
         for (const auto& layer : layers) {
             if (layer.get_type() == ElectricalType::INSULATION) {
@@ -13792,7 +13793,7 @@ bool Coil::fast_wind() {
     _sectionSharesOfSplit = std::nullopt;
 
     wind_by_sections();
-    if (!get_sections_description()) {
+    if (!mas_access::sections_description_ref(*this)) {
         return false;
     }
     // wind_by_sections() splits the window in proportion to each winding's copper AREA, but a
@@ -13806,12 +13807,12 @@ bool Coil::fast_wind() {
     // layers instead.
     if (auto wholeLayerSplit = get_proportion_per_winding_for_whole_layers()) {
         wind_by_sections_with_whole_layer_split(wholeLayerSplit.value());
-        if (!get_sections_description()) {
+        if (!mas_access::sections_description_ref(*this)) {
             return false;
         }
     }
     wind_by_layers();
-    if (!get_layers_description()) {
+    if (!mas_access::layers_description_ref(*this)) {
         return false;
     }
     {
@@ -13821,7 +13822,7 @@ bool Coil::fast_wind() {
         wind_by_turns();
     }
 
-    if (!get_turns_description()) {
+    if (!mas_access::turns_description_ref(*this)) {
         return false;
     }
     // Multi-column winding: mirror negative-x-window groups into place (no-op for
@@ -13873,14 +13874,14 @@ void Coil::rebuild_layers_description_from_turns() {
     // the layers, so the layers are rebuilt here by the winder's own layer step, from the sections
     // the coil states, with the insulation the wind lays between them. They must be the layers the
     // turns name: same names, same sections, same windings and parallels; anything else throws.
-    if (get_layers_description()) {
+    if (mas_access::layers_description_ref(*this)) {
         throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
             "rebuild_layers_description_from_turns: the coil already has a layers description");
     }
-    if (!get_sections_description()) {
+    if (!mas_access::sections_description_ref(*this)) {
         throw CoilNotProcessedException("Layers cannot be rebuilt for a coil without a sections description");
     }
-    if (!get_turns_description()) {
+    if (!mas_access::turns_description_ref(*this)) {
         throw CoilNotProcessedException("Layers cannot be rebuilt for a coil without a turns description");
     }
     InternalWindScope internalWindScope(*this);
@@ -13992,7 +13993,7 @@ void Coil::rebuild_layers_description_from_turns() {
 }
 
 bool Coil::rewind_layers_and_turns() {
-    if (!get_sections_description()) {
+    if (!mas_access::sections_description_ref(*this)) {
         throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
             "rewind_layers_and_turns needs a sections description to re-flow into");
     }
@@ -14006,7 +14007,7 @@ bool Coil::rewind_layers_and_turns() {
     }
     wind_by_layers();
     bool result = false;
-    if (get_layers_description()) {
+    if (mas_access::layers_description_ref(*this)) {
         wind_by_turns();
         result = get_turns_description().has_value();
     }
@@ -15042,7 +15043,7 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
             logEntry("Winding by layers", "Coil", 2);
             wind_by_layers();
 
-            if (!get_layers_description()) {
+            if (!mas_access::layers_description_ref(*this)) {
                 return false;
             }
 
@@ -15192,12 +15193,12 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
                 logEntry("Real winding: one extra crossing per layer -- re-winding", "Coil", 2);
                 wind_by_sections(proportionPerWinding, pattern, repetitions);
                 wind_by_layers();
-                if (!get_layers_description()) {
+                if (!mas_access::layers_description_ref(*this)) {
                     realWindingCrossingBump.lowerTo(before);
                     break;
                 }
                 wind_by_turns();
-                if (!get_turns_description()) {
+                if (!mas_access::turns_description_ref(*this)) {
                     realWindingCrossingBump.lowerTo(before);
                     break;
                 }
@@ -15270,9 +15271,9 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
                     wind_by_sections(proportionPerWinding, pattern, repetitions);
                     redistribute_section_turns_for_blocking();
                     wind_by_layers();
-                    if (!get_layers_description()) { break; }
+                    if (!mas_access::layers_description_ref(*this)) { break; }
                     wind_by_turns();
-                    if (!get_turns_description()) { break; }
+                    if (!mas_access::turns_description_ref(*this)) { break; }
                     if (delimitAndCompact) delimit_and_compact();
                     align_blocked_layer_turns();
                     continue;
@@ -15289,9 +15290,9 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
                     wind_by_sections(proportionPerWinding, pattern, repetitions);
                     redistribute_section_turns_for_blocking();
                     wind_by_layers();
-                    if (!get_layers_description()) { realWindingCrossingBump.lowerTo(before); break; }
+                    if (!mas_access::layers_description_ref(*this)) { realWindingCrossingBump.lowerTo(before); break; }
                     wind_by_turns();
-                    if (!get_turns_description()) { realWindingCrossingBump.lowerTo(before); break; }
+                    if (!mas_access::turns_description_ref(*this)) { realWindingCrossingBump.lowerTo(before); break; }
                     if (delimitAndCompact) delimit_and_compact();
                     align_blocked_layer_turns();
                     continue;
@@ -15314,11 +15315,11 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
                 wind_by_sections(proportionPerWinding, pattern, repetitions);
                 redistribute_section_turns_for_blocking();
                 wind_by_layers();
-                if (!get_layers_description()) {
+                if (!mas_access::layers_description_ref(*this)) {
                     break;
                 }
                 wind_by_turns();
-                if (!get_turns_description()) {
+                if (!mas_access::turns_description_ref(*this)) {
                     break;
                 }
                 if (delimitAndCompact) {
@@ -15397,11 +15398,11 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
                         wind_by_sections(proportionPerWinding, pattern, repetitions);
                         redistribute_section_turns_for_blocking();
                         wind_by_layers();
-                        if (!get_layers_description()) {
+                        if (!mas_access::layers_description_ref(*this)) {
                             break;
                         }
                         wind_by_turns();
-                        if (!get_turns_description()) {
+                        if (!mas_access::turns_description_ref(*this)) {
                             break;
                         }
                         if (delimitAndCompact) {
@@ -15420,7 +15421,7 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
             // under the blocking (no orphan spillover turns); the outermost section absorbs the rest.
             redistribute_section_turns_for_blocking();
             wind_by_layers();
-            if (!get_layers_description()) {
+            if (!mas_access::layers_description_ref(*this)) {
                 break;
             }
             // Wind turns even when the grown layout momentarily stops fitting: the loop MEASURES
@@ -15432,7 +15433,7 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
             // to a FITTING 15-layer layout). The post-loop `result` check still enforces the real
             // fitting contract; this only keeps the measurement geometry alive.
             wind_by_turns();
-            if (!get_turns_description()) {
+            if (!mas_access::turns_description_ref(*this)) {
                 break;
             }
             if (delimitAndCompact) {
@@ -15547,7 +15548,7 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
                     wind_by_sections(proportionPerWinding, pattern, repetitions);
                     redistribute_section_turns_for_blocking();
                     wind_by_layers();
-                    if (get_layers_description()) {
+                    if (mas_access::layers_description_ref(*this)) {
                         wind_by_turns();
                     }
                     if (!get_layers_description() || !get_turns_description()) {
@@ -15899,7 +15900,7 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
                 _applyConnectionBlocking = true;
                 wind_by_sections(proportionPerWinding, pattern, repetitions);
                 wind_by_layers();
-                if (!get_layers_description()) {
+                if (!mas_access::layers_description_ref(*this)) {
                     toroidalBlockingSettled = true;   // no layers: nothing left to block, the verdict below is "does not fit"
                     break;
                 }
@@ -15944,7 +15945,7 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
             // the corridors the displacement validated are stale after it: run one more
             // displacement pass against the regenerated leads, and — if it moved anything —
             // regenerate once more so crossings and corridors leave this function consistent.
-            if (get_turns_description()) {
+            if (mas_access::turns_description_ref(*this)) {
                 bool applyConnectionBlockingBackup = _applyConnectionBlocking;
                 _applyConnectionBlocking = true;   // strict sweep: no pre-blocking fallback
                 generate_toroidal_additional_coordinates();
@@ -16327,7 +16328,7 @@ bool Coil::wind_planar(std::vector<size_t> stackUp, std::optional<double> border
             logEntry("Winding by layers", "Coil", 2);
             wind_by_planar_layers();
 
-            if (!get_layers_description()) {
+            if (!mas_access::layers_description_ref(*this)) {
                 return false;
             }
 
@@ -16370,7 +16371,7 @@ std::optional<WindingStyle> Coil::get_winding_style_override(size_t windingIndex
 }
 
 void Coil::preload_winding_style_overrides_from_stored_sections() {
-    if (!get_sections_description()) {
+    if (!mas_access::sections_description_ref(*this)) {
         return;
     }
     auto overrides = _windingStyleOverridePerWinding;
@@ -16436,7 +16437,7 @@ void Coil::preload_winding_style_overrides_from_stored_sections() {
 
 std::map<std::string, WindingOrientation> Coil::preload_layers_orientation_from_stored_sections() {
     const auto before = _layersOrientationPerSection;
-    if (!get_sections_description()) {
+    if (!mas_access::sections_description_ref(*this)) {
         return before;
     }
     const auto sections = get_sections_description().value();   // bound: never range over a temporary
@@ -16990,7 +16991,7 @@ const Layer Coil::get_layer_by_name(const std::string& name) const {
 Turn Coil::get_turn_by_name(std::string name){
     if (_turnByName.count(name) == 0) {
 
-        if (!get_turns_description()) {
+        if (!mas_access::turns_description_ref(*this)) {
             throw CoilNotProcessedException("Turns description not set, did you forget to wind?");
         }
         auto turns = get_turns_description().value();
@@ -17113,7 +17114,7 @@ size_t Coil::get_turn_index_by_name(std::string name) {
 }
 
 size_t Coil::get_layer_index_by_name(std::string name) const {
-    if (!get_layers_description()) {
+    if (!mas_access::layers_description_ref(*this)) {
         throw CoilNotProcessedException("Layers description not set, did you forget to wind?");
     }
     auto layers = get_layers_description().value();
@@ -17126,7 +17127,7 @@ size_t Coil::get_layer_index_by_name(std::string name) const {
 }
 
 size_t Coil::get_section_index_by_name(std::string name) const {
-    if (!get_sections_description()) {
+    if (!mas_access::sections_description_ref(*this)) {
         throw CoilNotProcessedException("Sections description not set, did you forget to wind?");
     }
     auto sections = get_sections_description().value();
@@ -17266,10 +17267,10 @@ void Coil::throw_if_direct_wind_overflows(const std::string& caller) {
 
 bool Coil::are_sections_and_layers_fitting() {
     bool windTurns = true;
-    if (!get_sections_description()) {
+    if (!mas_access::sections_description_ref(*this)) {
         return false;
     }
-    if (!get_layers_description()) {
+    if (!mas_access::layers_description_ref(*this)) {
         return false;
     }
     auto sections = get_sections_description().value();
@@ -17420,7 +17421,7 @@ bool Coil::are_sections_and_layers_fitting() {
             // few um once align_blocked_layer_turns re-spreads the turns, and a stale rect
             // must not fail a coil whose copper sits exactly at the window edge.
             const double tol = 1e-9;
-            if (get_turns_description()) {
+            if (mas_access::turns_description_ref(*this)) {
                 auto wires = get_wires();
                 auto turnsForEnvelope = get_turns_description().value();
                 for (const auto& turn : turnsForEnvelope) {
@@ -17543,10 +17544,10 @@ Coil::FillingFactorsOutput Coil::calculate_filling_factor(size_t groupIndex) {
 
     auto windingOrientation = get_winding_orientation();
 
-    if (!get_layers_description()) {
+    if (!mas_access::layers_description_ref(*this)) {
         throw CoilNotProcessedException("Missing layers to calculate the filling factor.");
     }
-    if (!get_turns_description()) {
+    if (!mas_access::turns_description_ref(*this)) {
         throw CoilNotProcessedException("Missing turns to calculate the filling factor.");
     }
 
@@ -18477,7 +18478,7 @@ std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> Coil::add_insu
 }
 
 std::optional<Coil::WholeLayerSplit> Coil::get_proportion_per_winding_for_whole_layers() {
-    if (!get_sections_description()) {
+    if (!mas_access::sections_description_ref(*this)) {
         throw CoilNotProcessedException("get_proportion_per_winding_for_whole_layers needs the coil wound by sections");
     }
     auto bobbin = resolve_bobbin();
@@ -19748,7 +19749,7 @@ WoundColumnFrame Coil::get_wound_column_frame_for_section(const std::string& sec
         return frame;
     };
 
-    if (!get_sections_description()) {
+    if (!mas_access::sections_description_ref(*this)) {
         throw CoilNotProcessedException("Sections description is missing, cannot resolve the wound column of section " + sectionName);
     }
     auto sections = get_sections_description().value();
@@ -19934,7 +19935,7 @@ std::vector<RevolutionHalfPath> Coil::get_revolutions_at_half_path() {
         throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
             "Coil: a planar coil's turns are spirals on their boards, not revolutions round a column");
     }
-    if (!get_turns_description()) {
+    if (!mas_access::turns_description_ref(*this)) {
         throw CoilNotProcessedException("Coil: the revolutions need the turns description");
     }
     const auto turns = get_turns_description().value();
@@ -20797,7 +20798,7 @@ constexpr double kStoredCoordinateResolution = 2e-9;
 }  // namespace
 
 std::optional<std::string> Coil::turn_outlines_unknown_reason() {
-    if (!get_turns_description()) {
+    if (!mas_access::turns_description_ref(*this)) {
         return std::nullopt;
     }
     const auto turns = get_turns_description().value();   // bound: never range over a temporary
@@ -20822,7 +20823,7 @@ std::vector<CopperOverlap> Coil::judge_copper_overlaps() {
 std::vector<CopperOverlap> Coil::judge_copper_overlaps(const std::vector<ConnectionRoute>& routes,
                                                        const std::vector<ConnectionReservedSpace>& spaces) {
     std::vector<CopperOverlap> overlaps;
-    if (!get_turns_description()) {
+    if (!mas_access::turns_description_ref(*this)) {
         return overlaps;
     }
     const auto turns = get_turns_description().value();   // bound: never range over a temporary
@@ -21118,7 +21119,7 @@ std::vector<CopperOverlap> Coil::judge_copper_overlaps(const std::vector<Connect
 
 std::vector<TurnOutsideWindow> Coil::judge_turns_outside_window() {
     std::vector<TurnOutsideWindow> outside;
-    if (!get_turns_description()) {
+    if (!mas_access::turns_description_ref(*this)) {
         return outside;
     }
     auto bobbin = resolve_bobbin();
@@ -21762,7 +21763,7 @@ void Coil::apply_group_window_sides(bool inverse) {
     }
     set_sections_description(sections);
 
-    if (get_layers_description()) {
+    if (mas_access::layers_description_ref(*this)) {
         auto layers = get_layers_description().value();
         for (auto& layer : layers) {
             if (!layer.get_section() || !transformPerSection.contains(layer.get_section().value())) {
@@ -21781,7 +21782,7 @@ void Coil::apply_group_window_sides(bool inverse) {
         set_layers_description(layers);
     }
 
-    if (get_turns_description()) {
+    if (mas_access::turns_description_ref(*this)) {
         auto turns = get_turns_description().value();
         for (auto& turn : turns) {
             if (!turn.get_section() || !transformPerSection.contains(turn.get_section().value())) {
@@ -22045,7 +22046,7 @@ void Coil::record_allocated_section_territories() {
 void Coil::capture_stated_section_winding_orders() {
     // Only a present description states anything. wind_inner clears the sections before it
     // calls wind_by_sections, so by the second capture they are gone: keep what the first read.
-    if (!get_sections_description()) {
+    if (!mas_access::sections_description_ref(*this)) {
         return;
     }
     _statedSectionWindingOrders.clear();
@@ -22306,7 +22307,7 @@ Turn Coil::virtualize_turn(Turn turn, std::string virtualWindingName, std::strin
 }
 
 void Coil::devirtualize_sections_description() {
-    if (!get_sections_description()) {
+    if (!mas_access::sections_description_ref(*this)) {
         // Caller is responsible for not invoking devirtualize when wind_by_*
         // returned false. Be defensive: keep nullopt and return.
         return;
@@ -22321,7 +22322,7 @@ void Coil::devirtualize_sections_description() {
 }
 
 void Coil::devirtualize_layers_description() {
-    if (!get_layers_description()) {
+    if (!mas_access::layers_description_ref(*this)) {
         // wind_by_round_layers()/wind_by_rectangular_layers() return false
         // (leaving layers_description unset) when the winding does not fit
         // the window — but wind_by_layers() still runs this devirtualization
@@ -24166,7 +24167,7 @@ bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std:
 
 bool Coil::wind_by_layers() {
     set_layers_description(std::nullopt);
-    if (!get_sections_description()) {
+    if (!mas_access::sections_description_ref(*this)) {
         return false;
     }
     auto bobbin = resolve_bobbin();
@@ -24221,7 +24222,7 @@ bool Coil::wind_by_rectangular_layers() {
     _turnAxisOverflowFromStartLayers.clear();
     _turnAxisOverflowReason.clear();
     _closingStationRefused = false;
-    if (!get_sections_description()) {
+    if (!mas_access::sections_description_ref(*this)) {
         return false;
     }
 
@@ -25161,7 +25162,7 @@ bool Coil::wind_by_rectangular_layers() {
 
 bool Coil::wind_by_round_layers() {
     set_layers_description(std::nullopt);
-    if (!get_sections_description()) {
+    if (!mas_access::sections_description_ref(*this)) {
         return false;
     }
     auto bobbin = resolve_bobbin();
@@ -25565,7 +25566,7 @@ bool Coil::wind_by_round_layers() {
 bool Coil::wind_by_planar_layers() {
     set_layers_description(std::nullopt);
     std::vector<Layer> layers;
-    if (!get_sections_description()) {
+    if (!mas_access::sections_description_ref(*this)) {
         return false;
     }
 
@@ -25599,7 +25600,7 @@ bool Coil::wind_by_planar_layers() {
 
 bool Coil::wind_by_turns() {
     set_turns_description(std::nullopt);
-    if (!get_layers_description()) {
+    if (!mas_access::layers_description_ref(*this)) {
         return false;
     }
     // A direct call places turns into layers nobody has judged: an over-full layer put its turns
@@ -25654,7 +25655,7 @@ bool Coil::wind_by_turns() {
 
 bool Coil::wind_by_rectangular_turns() {
     set_turns_description(std::nullopt);
-    if (!get_layers_description()) {
+    if (!mas_access::layers_description_ref(*this)) {
         return false;
     }
     auto wirePerWinding = get_wires();
@@ -26374,7 +26375,7 @@ bool Coil::build_centered_single_turn_toroidal() {
 
 bool Coil::wind_by_round_turns() {
     set_turns_description(std::nullopt);
-    if (!get_layers_description()) {
+    if (!mas_access::layers_description_ref(*this)) {
         return false;
     }
     auto wirePerWinding = get_wires();
@@ -26810,7 +26811,7 @@ bool Coil::wind_by_round_turns() {
 
 bool Coil::wind_by_planar_turns(double borderToWireDistance, std::map<size_t, double> wireToWireDistance) {
     set_turns_description(std::nullopt);
-    if (!get_layers_description()) {
+    if (!mas_access::layers_description_ref(*this)) {
         return false;
     }
     auto wirePerWinding = get_wires();
@@ -27089,10 +27090,10 @@ std::vector<std::pair<double, std::vector<double>>> Coil::get_collision_distance
 }
 
 bool Coil::wind_toroidal_additional_turns() {
-    if (!get_layers_description()) {
+    if (!mas_access::layers_description_ref(*this)) {
         return false;
     }
-    if (!get_turns_description()) {
+    if (!mas_access::turns_description_ref(*this)) {
         return false;
     }
     auto wirePerWinding = get_wires();
@@ -28303,92 +28304,118 @@ bool Coil::delimit_and_compact_rectangular_window() {
     // Delimit
     auto groupType = get_coil_type();
 
-    if (!get_sections_description()) {
+    if (!mas_access::sections_description_ref(*this)) {
         throw CoilNotProcessedException("No sections to delimit");
     }
 
-    if (get_layers_description()) {
+    if (mas_access::layers_description_ref(*this)) {
         auto layers = get_layers_description().value();
-        if (get_turns_description()) {
+        if (mas_access::turns_description_ref(*this)) {
             // One grouping of the turns for the whole loop instead of a full copy of them per
             // layer (see group_turns_by_layer); built where get_turns_by_layer was first called.
             std::optional<std::map<std::string, std::vector<Turn>>> turnsByLayer;
+            // The layers are stored once, after the loop: storing the whole vector at the end of every layer's
+            // iteration copied it once per layer. A layer's iteration edits only that layer and the next one, so
+            // when one throws, the stored layers are put back to what the per-iteration store had left: those two
+            // layers as they were before it.
             for (size_t i = 0; i < layers.size(); ++i) {
-                if (layers[i].get_type() == ElectricalType::CONDUCTION) {
-                    if (!turnsByLayer) {
-                        turnsByLayer = group_turns_by_layer(*this);
-                    }
-                    const auto& turnsInLayer = turns_of_group(turnsByLayer.value(), layers[i].get_name());
-                    if (turnsInLayer.empty()) {
-                        // Its first turn is read below: a conduction layer with no turns is a coil the
-                        // winder left inconsistent, not a layer to size from garbage (ABT #1614).
-                        throw CoilNotProcessedException("delimit_and_compact_rectangular_window: conduction layer " + layers[i].get_name() + " has no turns");
-                    }
-                    auto layerCoordinates = layers[i].get_coordinates();
-                    double currentLayerMaximumWidth = (turnsInLayer[0].get_coordinates()[0] - layerCoordinates[0]) + turnsInLayer[0].get_dimensions().value()[0] / 2;
-                    double currentLayerMinimumWidth = (turnsInLayer[0].get_coordinates()[0] - layerCoordinates[0]) - turnsInLayer[0].get_dimensions().value()[0] / 2;
-                    double currentLayerMaximumHeight = (turnsInLayer[0].get_coordinates()[1] - layerCoordinates[1]) + turnsInLayer[0].get_dimensions().value()[1] / 2;
-                    double currentLayerMinimumHeight = (turnsInLayer[0].get_coordinates()[1] - layerCoordinates[1]) - turnsInLayer[0].get_dimensions().value()[1] / 2;
-                    for (auto& turn : turnsInLayer) {
-                        currentLayerMaximumWidth = std::max(currentLayerMaximumWidth, (turn.get_coordinates()[0] - layerCoordinates[0]) + turn.get_dimensions().value()[0] / 2);
-                        currentLayerMinimumWidth = std::min(currentLayerMinimumWidth, (turn.get_coordinates()[0] - layerCoordinates[0]) - turn.get_dimensions().value()[0] / 2);
-                        currentLayerMaximumHeight = std::max(currentLayerMaximumHeight, (turn.get_coordinates()[1] - layerCoordinates[1]) + turn.get_dimensions().value()[1] / 2);
-                        currentLayerMinimumHeight = std::min(currentLayerMinimumHeight, (turn.get_coordinates()[1] - layerCoordinates[1]) - turn.get_dimensions().value()[1] / 2);
-                    }
-                    if (groupType == WiringTechnology::PRINTED) {
-                        layers[i].set_coordinates(std::vector<double>({layerCoordinates[0],
-                                                                   layerCoordinates[1] + (currentLayerMaximumHeight + currentLayerMinimumHeight) / 2}));
-                        layers[i].set_dimensions(std::vector<double>({layers[i].get_dimensions()[0],
-                                                                   currentLayerMaximumHeight - currentLayerMinimumHeight}));
-                    }
-                    else {
-                        layers[i].set_coordinates(std::vector<double>({layerCoordinates[0] + (currentLayerMaximumWidth + currentLayerMinimumWidth) / 2,
-                                                                   layerCoordinates[1] + (currentLayerMaximumHeight + currentLayerMinimumHeight) / 2}));
-                        layers[i].set_dimensions(std::vector<double>({currentLayerMaximumWidth - currentLayerMinimumWidth,
-                                                                   currentLayerMaximumHeight - currentLayerMinimumHeight}));
-                        // ABT #616: the dims above are the exact turn envelope, so the stored
-                        // filling factor (copper / PARTITION-time extent) is stale the moment the
-                        // envelope differs — a 3-turn layer partitioned at 1.08 mm but wound to a
-                        // 1.29 mm envelope read ff=1.19 and failed the fit gates while its copper
-                        // exactly filled its rect. Refresh the ratio along the layer's turn axis
-                        // from the same envelope just measured.
-                        if (layers[i].get_type() == ElectricalType::CONDUCTION && !turnsInLayer.empty()) {
-                            size_t ffAxis = (layers[i].get_orientation() == WindingOrientation::OVERLAPPING) ? 1 : 0;
-                            double copperAlongAxis = 0;
-                            for (auto& turn : turnsInLayer) {
-                                copperAlongAxis += turn.get_dimensions().value()[ffAxis];
-                            }
-                            double envelope = (ffAxis == 1)
-                                ? currentLayerMaximumHeight - currentLayerMinimumHeight
-                                : currentLayerMaximumWidth - currentLayerMinimumWidth;
-                            if (envelope > 0) {
-                                layers[i].set_filling_factor(roundFloat(copperAlongAxis / envelope, 6));
-                            }
-                        }
-                    }
+                std::optional<Layer> layerBefore;
+                std::optional<Layer> nextLayerBefore;
+                if (i > 0) {
+                    layerBefore = layers[i];
                     if (i + 1 < layers.size()) {
-                        layerCoordinates = layers[i + 1].get_coordinates();
-                        if (layers[i + 1].get_type() == ElectricalType::INSULATION && layers[i + 1].get_section() == layers[i].get_section() && layers[i + 1].get_orientation() == WindingOrientation::CONTIGUOUS) {
-                            layers[i + 1].set_coordinates(std::vector<double>({layerCoordinates[0] + (currentLayerMaximumWidth + currentLayerMinimumWidth) / 2,
-                                                                       layerCoordinates[1]}));
-                            layers[i + 1].set_dimensions(std::vector<double>({currentLayerMaximumWidth - currentLayerMinimumWidth, layers[i + 1].get_dimensions()[1]}));
+                        nextLayerBefore = layers[i + 1];
+                    }
+                }
+                try {
+                    if (layers[i].get_type() == ElectricalType::CONDUCTION) {
+                        if (!turnsByLayer) {
+                            turnsByLayer = group_turns_by_layer(*this);
                         }
-                        // ABT #1896: the same for an OVERLAPPING interlayer sheet, along the layer's
-                        // height. It is laid at the section's full height (the window's, before the
-                        // delimit) and the section below shrinks to its conduction layers, so the
-                        // sheet stood out of its own section: the web flyback's 0 mm sheets were
-                        // 5.65 mm tall in a 5.313 mm section, contiguous_filling_factor read 1.063,
-                        // the fitting layout was judged unfit and try_rewind re-split it into a
-                        // single 10.5 mm Secondary layer in a 5.65 mm window. The sheet covers the
-                        // layer it is wound on.
-                        else if (groupType != WiringTechnology::PRINTED && layers[i + 1].get_type() == ElectricalType::INSULATION && layers[i + 1].get_section() == layers[i].get_section() && layers[i + 1].get_orientation() == WindingOrientation::OVERLAPPING) {
-                            layers[i + 1].set_coordinates(std::vector<double>({layerCoordinates[0],
+                        const auto& turnsInLayer = turns_of_group(turnsByLayer.value(), layers[i].get_name());
+                        if (turnsInLayer.empty()) {
+                            // Its first turn is read below: a conduction layer with no turns is a coil the
+                            // winder left inconsistent, not a layer to size from garbage (ABT #1614).
+                            throw CoilNotProcessedException("delimit_and_compact_rectangular_window: conduction layer " + layers[i].get_name() + " has no turns");
+                        }
+                        auto layerCoordinates = layers[i].get_coordinates();
+                        double currentLayerMaximumWidth = (turnsInLayer[0].get_coordinates()[0] - layerCoordinates[0]) + turnsInLayer[0].get_dimensions().value()[0] / 2;
+                        double currentLayerMinimumWidth = (turnsInLayer[0].get_coordinates()[0] - layerCoordinates[0]) - turnsInLayer[0].get_dimensions().value()[0] / 2;
+                        double currentLayerMaximumHeight = (turnsInLayer[0].get_coordinates()[1] - layerCoordinates[1]) + turnsInLayer[0].get_dimensions().value()[1] / 2;
+                        double currentLayerMinimumHeight = (turnsInLayer[0].get_coordinates()[1] - layerCoordinates[1]) - turnsInLayer[0].get_dimensions().value()[1] / 2;
+                        for (auto& turn : turnsInLayer) {
+                            currentLayerMaximumWidth = std::max(currentLayerMaximumWidth, (turn.get_coordinates()[0] - layerCoordinates[0]) + turn.get_dimensions().value()[0] / 2);
+                            currentLayerMinimumWidth = std::min(currentLayerMinimumWidth, (turn.get_coordinates()[0] - layerCoordinates[0]) - turn.get_dimensions().value()[0] / 2);
+                            currentLayerMaximumHeight = std::max(currentLayerMaximumHeight, (turn.get_coordinates()[1] - layerCoordinates[1]) + turn.get_dimensions().value()[1] / 2);
+                            currentLayerMinimumHeight = std::min(currentLayerMinimumHeight, (turn.get_coordinates()[1] - layerCoordinates[1]) - turn.get_dimensions().value()[1] / 2);
+                        }
+                        if (groupType == WiringTechnology::PRINTED) {
+                            layers[i].set_coordinates(std::vector<double>({layerCoordinates[0],
                                                                        layerCoordinates[1] + (currentLayerMaximumHeight + currentLayerMinimumHeight) / 2}));
-                            layers[i + 1].set_dimensions(std::vector<double>({layers[i + 1].get_dimensions()[0], currentLayerMaximumHeight - currentLayerMinimumHeight}));
+                            layers[i].set_dimensions(std::vector<double>({layers[i].get_dimensions()[0],
+                                                                       currentLayerMaximumHeight - currentLayerMinimumHeight}));
+                        }
+                        else {
+                            layers[i].set_coordinates(std::vector<double>({layerCoordinates[0] + (currentLayerMaximumWidth + currentLayerMinimumWidth) / 2,
+                                                                       layerCoordinates[1] + (currentLayerMaximumHeight + currentLayerMinimumHeight) / 2}));
+                            layers[i].set_dimensions(std::vector<double>({currentLayerMaximumWidth - currentLayerMinimumWidth,
+                                                                       currentLayerMaximumHeight - currentLayerMinimumHeight}));
+                            // ABT #616: the dims above are the exact turn envelope, so the stored
+                            // filling factor (copper / PARTITION-time extent) is stale the moment the
+                            // envelope differs — a 3-turn layer partitioned at 1.08 mm but wound to a
+                            // 1.29 mm envelope read ff=1.19 and failed the fit gates while its copper
+                            // exactly filled its rect. Refresh the ratio along the layer's turn axis
+                            // from the same envelope just measured.
+                            if (layers[i].get_type() == ElectricalType::CONDUCTION && !turnsInLayer.empty()) {
+                                size_t ffAxis = (layers[i].get_orientation() == WindingOrientation::OVERLAPPING) ? 1 : 0;
+                                double copperAlongAxis = 0;
+                                for (auto& turn : turnsInLayer) {
+                                    copperAlongAxis += turn.get_dimensions().value()[ffAxis];
+                                }
+                                double envelope = (ffAxis == 1)
+                                    ? currentLayerMaximumHeight - currentLayerMinimumHeight
+                                    : currentLayerMaximumWidth - currentLayerMinimumWidth;
+                                if (envelope > 0) {
+                                    layers[i].set_filling_factor(roundFloat(copperAlongAxis / envelope, 6));
+                                }
+                            }
+                        }
+                        if (i + 1 < layers.size()) {
+                            layerCoordinates = layers[i + 1].get_coordinates();
+                            if (layers[i + 1].get_type() == ElectricalType::INSULATION && layers[i + 1].get_section() == layers[i].get_section() && layers[i + 1].get_orientation() == WindingOrientation::CONTIGUOUS) {
+                                layers[i + 1].set_coordinates(std::vector<double>({layerCoordinates[0] + (currentLayerMaximumWidth + currentLayerMinimumWidth) / 2,
+                                                                           layerCoordinates[1]}));
+                                layers[i + 1].set_dimensions(std::vector<double>({currentLayerMaximumWidth - currentLayerMinimumWidth, layers[i + 1].get_dimensions()[1]}));
+                            }
+                            // ABT #1896: the same for an OVERLAPPING interlayer sheet, along the layer's
+                            // height. It is laid at the section's full height (the window's, before the
+                            // delimit) and the section below shrinks to its conduction layers, so the
+                            // sheet stood out of its own section: the web flyback's 0 mm sheets were
+                            // 5.65 mm tall in a 5.313 mm section, contiguous_filling_factor read 1.063,
+                            // the fitting layout was judged unfit and try_rewind re-split it into a
+                            // single 10.5 mm Secondary layer in a 5.65 mm window. The sheet covers the
+                            // layer it is wound on.
+                            else if (groupType != WiringTechnology::PRINTED && layers[i + 1].get_type() == ElectricalType::INSULATION && layers[i + 1].get_section() == layers[i].get_section() && layers[i + 1].get_orientation() == WindingOrientation::OVERLAPPING) {
+                                layers[i + 1].set_coordinates(std::vector<double>({layerCoordinates[0],
+                                                                           layerCoordinates[1] + (currentLayerMaximumHeight + currentLayerMinimumHeight) / 2}));
+                                layers[i + 1].set_dimensions(std::vector<double>({layers[i + 1].get_dimensions()[0], currentLayerMaximumHeight - currentLayerMinimumHeight}));
+                            }
                         }
                     }
                 }
-                set_layers_description(layers);
+                catch (...) {
+                    if (i > 0) {
+                        layers[i] = std::move(layerBefore.value());
+                        if (nextLayerBefore) {
+                            layers[i + 1] = std::move(nextLayerBefore.value());
+                        }
+                        set_layers_description(layers);
+                    }
+                    throw;
+                }
+            }
+            if (!layers.empty()) {
+                set_layers_description(std::move(layers));
             }
         }
 
@@ -28461,7 +28488,7 @@ bool Coil::delimit_and_compact_rectangular_window() {
     }
 
      // Compact
-    if (get_sections_description()) {
+    if (mas_access::sections_description_ref(*this)) {
         auto sections = get_sections_description().value();
 
         std::vector<std::vector<double>> alignedSectionDimensionsPerSection;
@@ -28476,12 +28503,12 @@ bool Coil::delimit_and_compact_rectangular_window() {
         double paddingAmongSectionHeight = alignedSectionDimensionsPerSection[0][3];
 
         std::vector<Turn> turns;
-        if (get_turns_description()) {
+        if (mas_access::turns_description_ref(*this)) {
             turns = get_turns_description().value();
         }
 
         std::vector<Layer> layers;
-        if (get_layers_description()) {
+        if (mas_access::layers_description_ref(*this)) {
             layers = get_layers_description().value();
         }
 
@@ -28623,10 +28650,10 @@ bool Coil::delimit_and_compact_rectangular_window() {
                 currentCoilHeight -= sections[sectionIndex].get_dimensions()[1] / 2 + paddingAmongSectionHeight;
             }
         }
-        if (get_turns_description()) {
+        if (mas_access::turns_description_ref(*this)) {
             set_turns_description(turns);
         }
-        if (get_layers_description()) {
+        if (mas_access::layers_description_ref(*this)) {
             set_layers_description(layers);
         }
         set_sections_description(sections);
@@ -28690,7 +28717,7 @@ bool Coil::delimit_and_compact_rectangular_window() {
 }
 
 bool Coil::delimit_and_compact_round_window() {
-    if (get_turns_description()) {
+    if (mas_access::turns_description_ref(*this)) {
         convert_turns_to_polar_coordinates();
     }
 
@@ -28700,9 +28727,9 @@ bool Coil::delimit_and_compact_round_window() {
 
 
     // Radial Delimit
-    if (get_layers_description()) {
+    if (mas_access::layers_description_ref(*this)) {
         auto layers = get_layers_description().value();
-        if (get_turns_description()) {
+        if (mas_access::turns_description_ref(*this)) {
             // One grouping of the turns for the whole loop instead of a full copy of them per
             // layer (see group_turns_by_layer); built where get_turns_by_layer was first called.
             std::optional<std::map<std::string, std::vector<Turn>>> turnsByLayer;
@@ -28760,10 +28787,10 @@ bool Coil::delimit_and_compact_round_window() {
     }
 
     // Angular Delimit
-    if (get_layers_description()) {
+    if (mas_access::layers_description_ref(*this)) {
         auto wirePerWinding = get_wires();
         auto layers = get_layers_description().value();
-        if (get_turns_description()) {
+        if (mas_access::turns_description_ref(*this)) {
             // One grouping of the turns for the whole loop instead of a full copy of them per
             // layer (see group_turns_by_layer); built where get_turns_by_layer was first called.
             std::optional<std::map<std::string, std::vector<Turn>>> turnsByLayer;
@@ -28863,7 +28890,7 @@ bool Coil::delimit_and_compact_round_window() {
     }
 
      // Angular Compact
-    if (get_sections_description()) {
+    if (mas_access::sections_description_ref(*this)) {
         auto sections = get_sections_description().value();
 
         std::vector<std::vector<double>> alignedSectionDimensionsPerSection;
@@ -28875,12 +28902,12 @@ bool Coil::delimit_and_compact_round_window() {
         double currentCoilAngle = alignedSectionDimensionsPerSection[0][1];
         double paddingAmongSectionAngle = alignedSectionDimensionsPerSection[0][3];
         std::vector<Turn> turns;
-        if (get_turns_description()) {
+        if (mas_access::turns_description_ref(*this)) {
             turns = get_turns_description().value();
         }
 
         std::vector<Layer> layers;
-        if (get_layers_description()) {
+        if (mas_access::layers_description_ref(*this)) {
             layers = get_layers_description().value();
         }
 
@@ -28985,10 +29012,10 @@ bool Coil::delimit_and_compact_round_window() {
                 currentCoilAngle += sections[sectionIndex].get_dimensions()[1] / 2 + paddingAmongSectionAngle + marginAngle1;
             }
         }
-        if (get_turns_description()) {
+        if (mas_access::turns_description_ref(*this)) {
             set_turns_description(turns);
         }
-        if (get_layers_description()) {
+        if (mas_access::layers_description_ref(*this)) {
             set_layers_description(layers);
         }
         set_sections_description(sections);
@@ -28998,7 +29025,7 @@ bool Coil::delimit_and_compact_round_window() {
         }
     }
 
-    if (get_turns_description()) {
+    if (mas_access::turns_description_ref(*this)) {
         convert_turns_to_cartesian_coordinates();
     }
     return true;
@@ -29056,7 +29083,7 @@ Wire Coil::resolve_wire(Winding winding) {
 
 std::vector<double> Coil::get_wires_length() const {
     std::vector<double> wiresLength;
-    if (!get_turns_description()) {
+    if (!mas_access::turns_description_ref(*this)) {
         throw CoilNotProcessedException("Missing turns");
     }
     for (auto winding : get_functional_description()) {
@@ -29157,7 +29184,7 @@ Bobbin Coil::resolve_bobbin() {
 
 size_t Coil::convert_conduction_section_index_to_global(size_t conductionSectionIndex) {
     size_t currentConductionSectionIndex = 0;
-    if (!get_sections_description()) {
+    if (!mas_access::sections_description_ref(*this)) {
         throw CoilNotProcessedException("In Convert Conduction Sections: Section description empty, wind coil first");
     }
     auto sections = get_sections_description().value();
@@ -29181,10 +29208,10 @@ void Coil::clear() {
 
 void Coil::try_rewind() {
     InternalWindScope internalWindScope(*this);
-    if (!get_sections_description()) {
+    if (!mas_access::sections_description_ref(*this)) {
         return;
     }
-    if (!get_layers_description()) {
+    if (!mas_access::layers_description_ref(*this)) {
         return;
     }
     // ABT #1496: THE SECOND RULE OF THIS RE-PROPORTIONING. The extra-space rule below only hands
@@ -29238,7 +29265,7 @@ void Coil::try_rewind() {
             return;
         }
         wind_by_turns();
-        if (!get_turns_description()) {
+        if (!mas_access::turns_description_ref(*this)) {
             restoreFallback();
             return;
         }
@@ -29524,7 +29551,7 @@ void Coil::try_rewind() {
 
     wind_by_layers();
 
-    if (!get_layers_description()) {
+    if (!mas_access::layers_description_ref(*this)) {
         if (fallbackTurnsDescription) {
             set_sections_description(fallbackSectionsDescription);
             set_layers_description(fallbackLayersDescription);
@@ -29571,7 +29598,7 @@ void Coil::preload_margins(std::vector<std::vector<double>> marginPairs) {
 
 void Coil::add_margin_to_section_by_index(size_t sectionIndex, std::vector<double> margins) {
     InternalWindScope internalWindScope(*this);
-    if (!get_sections_description()) {
+    if (!mas_access::sections_description_ref(*this)) {
         throw CoilNotProcessedException("In Add Margin to Section: Section description empty, wind coil first");
     }
     // Explicit margins re-arm the ABT #676 recovery for later winds (ABT #724) and
@@ -29634,7 +29661,7 @@ void Coil::add_margin_to_section_by_index(size_t sectionIndex, std::vector<doubl
 
 std::vector<Section> Coil::get_sections_description_conduction() const {
     std::vector<Section> sectionsConduction;
-    if (!get_sections_description()) {
+    if (!mas_access::sections_description_ref(*this)) {
         throw CoilNotProcessedException("Not wound by sections");
     }
     std::vector<Section> sections = get_sections_description().value();
@@ -29649,7 +29676,7 @@ std::vector<Section> Coil::get_sections_description_conduction() const {
 
 std::vector<Layer> Coil::get_layers_description_conduction() const {
     std::vector<Layer> layersConduction;
-    if (!get_layers_description()) {
+    if (!mas_access::layers_description_ref(*this)) {
         throw CoilNotProcessedException("Not wound by layers");
     }
     std::vector<Layer> layers = get_layers_description().value();
@@ -29664,7 +29691,7 @@ std::vector<Layer> Coil::get_layers_description_conduction() const {
 
 std::vector<Section> Coil::get_sections_description_insulation() const {
     std::vector<Section> sectionsInsulation;
-    if (!get_sections_description()) {
+    if (!mas_access::sections_description_ref(*this)) {
         throw CoilNotProcessedException("Not wound by sections");
     }
     std::vector<Section> sections = get_sections_description().value();
@@ -29679,7 +29706,7 @@ std::vector<Section> Coil::get_sections_description_insulation() const {
 
 std::vector<Layer> Coil::get_layers_description_insulation() const {
     std::vector<Layer> layersInsulation;
-    if (!get_layers_description()) {
+    if (!mas_access::layers_description_ref(*this)) {
         throw CoilNotProcessedException("Not wound by layers");
     }
     std::vector<Layer> layers = get_layers_description().value();
@@ -29769,7 +29796,7 @@ double Coil::get_insulation_layer_thickness(Coil coil, std::string layerName) {
 }
 
 double Coil::get_insulation_layer_thickness(std::string layerName) {
-    if (!get_layers_description()) {
+    if (!mas_access::layers_description_ref(*this)) {
         throw CoilNotProcessedException("Coil is missing layers description");
     }
     auto layer = get_layer_by_name(layerName);
@@ -29911,7 +29938,7 @@ std::vector<double> Coil::get_turns_ratios() const {
 std::vector<double> Coil::get_maximum_dimensions() {
     std::vector<double> bobbinMaximumDimensions = resolve_bobbin().get_maximum_dimensions();
 
-    if (!get_turns_description()) {
+    if (!mas_access::turns_description_ref(*this)) {
         throw CoilNotProcessedException("Missing turns");
     }
     auto turns = get_turns_description().value();
@@ -30434,7 +30461,7 @@ std::vector<Wire> Coil::guess_round_wire_from_dc_resistance(std::vector<double> 
 }
 
 std::vector<double> Coil::resolve_margin(size_t sectionIndex) {
-    if (!get_sections_description()) {
+    if (!mas_access::sections_description_ref(*this)) {
         throw CoilNotProcessedException("Sections not found");
     }
     auto sections = get_sections_description().value();
@@ -30686,7 +30713,7 @@ std::vector<double> Coil::resolve_margin(const Margin& marginVariant) {
 }
 
 MarginInfo Coil::resolve_margin_info(size_t sectionIndex) {
-    if (!get_sections_description()) {
+    if (!mas_access::sections_description_ref(*this)) {
         throw CoilNotProcessedException("Sections not found");
     }
     auto sections = get_sections_description().value();
@@ -30887,7 +30914,7 @@ Coil Coil::create_quick_coil(std::string coreShapeName, std::vector<int64_t> num
 }
 
 std::vector<Turn> Coil::get_turns_touching_bobbin_column() {
-    if (!get_turns_description()) {
+    if (!mas_access::turns_description_ref(*this)) {
         throw CoilNotProcessedException("Missing turns description");
     }
     auto turns = get_turns_description().value();
@@ -30895,7 +30922,7 @@ std::vector<Turn> Coil::get_turns_touching_bobbin_column() {
 }
 
 std::vector<Turn> Coil::get_turns_touching_bobbin_column(std::vector<size_t> turnIndexes) {
-    if (!get_turns_description()) {
+    if (!mas_access::turns_description_ref(*this)) {
         throw CoilNotProcessedException("Missing turns description");
     }
     auto turns = get_turns_description().value();
@@ -30929,7 +30956,7 @@ std::vector<Turn> Coil::get_turns_touching_bobbin_column(std::vector<Turn> turns
 }
 
 std::vector<Turn> Coil::get_turns_touching_bobbin_walls() {
-    if (!get_turns_description()) {
+    if (!mas_access::turns_description_ref(*this)) {
         throw CoilNotProcessedException("Missing turns description");
     }
     auto turns = get_turns_description().value();
@@ -30937,7 +30964,7 @@ std::vector<Turn> Coil::get_turns_touching_bobbin_walls() {
 }
 
 std::vector<Turn> Coil::get_turns_touching_bobbin_walls(std::vector<size_t> turnIndexes) {
-    if (!get_turns_description()) {
+    if (!mas_access::turns_description_ref(*this)) {
         throw CoilNotProcessedException("Missing turns description");
     }
     auto turns = get_turns_description().value();
