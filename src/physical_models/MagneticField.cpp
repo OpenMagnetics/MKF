@@ -5016,6 +5016,93 @@ struct SplitSection {
     }
 };
 
+// The even complex moments <(x + j y)^k>, k = 0, 2, ..., 2 (splitSeriesMoments - 1), of a uniform axis-aligned section
+// about its centre (a disk's vanish past k = 0). With <x^n> = a^n / (n + 1) over [-a, a] (n even):
+// <(x + j y)^k> = sum over even i of C(k, i) (-1)^(i / 2) <x^(k - i)> <y^i>.
+constexpr size_t splitSeriesMoments = 9;  // k up to 16
+// C(2 index, 2 q), and 1 / (2 q + 1).
+constexpr auto splitSeriesBinomials = [] {
+    std::array<std::array<double, splitSeriesMoments>, splitSeriesMoments> binomials{};
+    for (size_t index = 0; index < splitSeriesMoments; ++index) {
+        double binomial = 1;  // C(k, j), j = 0 .. k
+        const size_t k = 2 * index;
+        for (size_t j = 0; j <= k; ++j) {
+            if (j > 0) {
+                binomial = binomial * static_cast<double>(k - j + 1) / static_cast<double>(j);
+            }
+            if (j % 2 == 0) {
+                binomials[index][j / 2] = binomial;
+            }
+        }
+    }
+    return binomials;
+}();
+constexpr auto splitSeriesOddReciprocals = [] {
+    std::array<double, splitSeriesMoments> reciprocals{};
+    for (size_t q = 0; q < splitSeriesMoments; ++q) {
+        reciprocals[q] = 1.0 / static_cast<double>(2 * q + 1);
+    }
+    return reciprocals;
+}();
+constexpr auto splitSeriesHalfReciprocals = [] {  // 1 / (2 index)
+    std::array<double, splitSeriesMoments> reciprocals{};
+    for (size_t index = 1; index < splitSeriesMoments; ++index) {
+        reciprocals[index] = 1.0 / static_cast<double>(2 * index);
+    }
+    return reciprocals;
+}();
+std::array<double, splitSeriesMoments> split_even_moments(const SplitSection& section) {
+    std::array<double, splitSeriesMoments> moments{};
+    moments[0] = 1;
+    if (section.round) {
+        return moments;
+    }
+    std::array<double, splitSeriesMoments> meanPowerX{};  // <x^(2q)>
+    std::array<double, splitSeriesMoments> meanPowerY{};  // <y^(2q)>
+    double powerX = 1;
+    double powerY = 1;
+    const double squaredX = section.halfWidth * section.halfWidth;
+    const double squaredY = section.halfHeight * section.halfHeight;
+    for (size_t q = 0; q < splitSeriesMoments; ++q) {
+        meanPowerX[q] = powerX * splitSeriesOddReciprocals[q];
+        meanPowerY[q] = (q % 2 == 0 ? powerY : -powerY) * splitSeriesOddReciprocals[q];  // with (-1)^q: (j y)^(2q)
+        powerX *= squaredX;
+        powerY *= squaredY;
+    }
+    for (size_t index = 1; index < splitSeriesMoments; ++index) {
+        double moment = 0;
+        for (size_t q = 0; q <= index; ++q) {
+            moment += splitSeriesBinomials[index][q] * meanPowerX[index - q] * meanPowerY[q];
+        }
+        moments[index] = moment;
+    }
+    return moments;
+}
+
+// The mean of ln |p - q| over two axis-aligned sections whose centres are (dx, dy) apart, more than twice their summed
+// half-diagonals rho: ln |D + e| = ln |D| + Re sum (-1)^(k + 1) e^k / (k D^k), e = (p - c_target) - (q - c_source), whose odd
+// moments vanish, to k = 16. The remainder is below (rho / |D|)^18 / (18 (1 - (rho / |D|)^2)) <= 2.8e-7 of ln (the 4th-order
+// series it replaces beyond 8 rho stops at 6.5e-7); against the exact 16-corner form, 4e-9 at worst on 2e5 random pairs
+// at 2 to 8 rho, the exact form's own rounding.
+double split_mean_log_series(double dx, double dy, double d2, const SplitSection& target, const SplitSection& source) {
+    const auto targetMoments = split_even_moments(target);
+    const auto sourceMoments = split_even_moments(source);
+    // 1 / D^2, D = dx + j dy.
+    const std::complex<double> inverseSquared = 1.0 / std::complex<double>(dx * dx - dy * dy, 2 * dx * dy);
+    std::complex<double> power = inverseSquared;
+    double sum = 0;
+    for (size_t index = 1; index < splitSeriesMoments; ++index) {
+        // <e^k> = sum over even i of C(k, i) <target^i> <source^(k - i)>.
+        double moment = 0;
+        for (size_t q = 0; q <= index; ++q) {
+            moment += splitSeriesBinomials[index][q] * targetMoments[q] * sourceMoments[index - q];
+        }
+        sum += moment * power.real() * splitSeriesHalfReciprocals[index];
+        power *= inverseSquared;
+    }
+    return 0.5 * std::log(d2) - sum;
+}
+
 // The four corner differences of the ranges [p0, p1] and [q0, q1], with their signs in the double integral.
 std::array<std::pair<double, double>, 4> split_corners(double p0, double p1, double q0, double q1) {
     return {{{p1 - q0, 1.0}, {p1 - q1, -1.0}, {p0 - q0, -1.0}, {p0 - q1, 1.0}}};
@@ -5103,6 +5190,9 @@ double split_mean_log_aligned(const SplitSection& target, const SplitSection& so
         const double m2 = target.moment2() + source.moment2();
         const double m4 = target.moment4() + 6 * target.moment2() * source.moment2() + source.moment4();
         return 0.5 * std::log(d2) - m2 * real2 / 2 - m4 * real4 / 4;
+    }
+    if (d2 > 4 * reach * reach && !(target.round && source.round)) {
+        return split_mean_log_series(dx, dy, d2, target, source);
     }
     if (target.round && source.round) {
         // Distinct uniform disks act on each other as their centre filaments when they do not overlap. A crossing and its
