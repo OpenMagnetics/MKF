@@ -1812,11 +1812,48 @@ int MagnetizingInductance::calculate_number_turns_at_operating_point(Core core, 
         return numberTurnsPrimary;
     }
 
+    // The solve evaluates the model at the same turn count several times (the Newton steps end on the count the
+    // neighbour comparison and the checks below evaluate again). Each evaluation is kept by turn count and read
+    // back when the evaluation would recompute exactly the same thing: when no evaluation can change what the next
+    // one reads. That holds for a one-winding inductor whose excitation carries both its current and its voltage:
+    // every evaluation then makes the current its magnetizing current afresh (stamp_magnetizing_current), never
+    // writes the current or the voltage (the induced voltage is written only when the voltage is missing), and its
+    // other edits (standardizing, power-of-two sampling) leave a point that already went through them as it is.
+    // Any other operating point is evaluated every time, as before.
+    struct TurnsEvaluation {
+        MagnetizingInductanceOutput inductance;
+        SignalDescriptor magneticFluxDensity;
+        std::optional<DcBiasPoint> dcBiasPoint;
+    };
+    std::map<int, TurnsEvaluation> evaluationsByTurns;
+    bool evaluationsRepeatable = false;
+    {
+        const auto& excitations = operatingPoint.get_excitations_per_winding();
+        evaluationsRepeatable = coil.get_functional_description().size() == 1 && excitations.size() == 1 &&
+                                mas_access::current_ref(excitations[0]).has_value() &&
+                                mas_access::voltage_ref(excitations[0]).has_value();
+    }
+    auto evaluateAtTurns = [&](int n) -> const TurnsEvaluation& {
+        if (evaluationsRepeatable) {
+            auto found = evaluationsByTurns.find(n);
+            if (found != evaluationsByTurns.end()) {
+                // The DC point of that evaluation, as recomputing it would leave it.
+                _lastDcBiasPoint = found->second.dcBiasPoint;
+                return found->second;
+            }
+        }
+        coil.get_mutable_functional_description()[0].set_number_turns(static_cast<int64_t>(n));
+        auto [inductanceOutput, magneticFluxDensity] = calculate_inductance_and_magnetic_flux_density(core, coil, operatingPointPtr);
+        TurnsEvaluation evaluation{std::move(inductanceOutput), std::move(magneticFluxDensity), _lastDcBiasPoint};
+        if (!evaluationsRepeatable) {
+            evaluationsByTurns.clear();
+        }
+        return evaluationsByTurns.insert_or_assign(n, std::move(evaluation)).first->second;
+    };
+
     // Evaluate the canonical operating-point inductance at a trial turn count.
     auto inductanceAtTurns = [&](int n) -> double {
-        coil.get_mutable_functional_description()[0].set_number_turns(static_cast<int64_t>(n));
-        auto out = calculate_inductance_from_number_turns_and_gapping(core, coil, operatingPointPtr);
-        return resolve_dimensional_values(out.get_magnetizing_inductance());
+        return resolve_dimensional_values(evaluateAtTurns(n).inductance.get_magnetizing_inductance());
     };
 
     // Newton on L proportional to N^2: corrects the seed up or down.
@@ -1899,8 +1936,9 @@ int MagnetizingInductance::calculate_number_turns_at_operating_point(Core core, 
              << desiredMagnetizingInductance * 1e6 << " uH";
         return text.str();
     };
-    coil.get_mutable_functional_description()[0].set_number_turns(static_cast<int64_t>(numberTurnsPrimary));
-    auto [finalInductanceOutput, finalFluxDensity] = calculate_inductance_and_magnetic_flux_density(core, coil, operatingPointPtr);
+    const TurnsEvaluation finalEvaluation = evaluateAtTurns(numberTurnsPrimary);
+    const auto& finalInductanceOutput = finalEvaluation.inductance;
+    const auto& finalFluxDensity = finalEvaluation.magneticFluxDensity;
     const auto finalDcBiasPoint = get_last_dc_bias_point();
     double finalInductance = resolve_dimensional_values(finalInductanceOutput.get_magnetizing_inductance());
     if (!std::isfinite(finalInductance) || finalInductance <= 0) {
