@@ -27,6 +27,7 @@
 #include <cfloat>
 #include <complex>
 #include <cstdlib>
+#include <cstring>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
@@ -95,27 +96,18 @@ double flux_density_segment_duration(const std::vector<double>& magneticFluxDens
 
 } // namespace
 
-std::vector<CoreLossesModels> CoreLossesModel::get_methods(CoreMaterialDataOrNameUnion material) {
-    CoreMaterial materialData;
-    // If the material is a string, we have to load its data from the database, unless it is dummy (in order to
-    // avoid long loading operatings)
-    if (std::holds_alternative<std::string>(material) && std::get<std::string>(material) != "dummy") {
-        materialData =
-            find_core_material_by_name(std::get<std::string>(material));
-    }
-    else {
-        materialData = std::get<CoreMaterial>(material);
-    }
-
+// The models a material's loss data supports, read from the material in place (CoreLossesModel::get_methods
+// copied the material twice and each of its loss tables once per call, once per switching cycle of a line-cycle record).
+static std::vector<CoreLossesModels> core_losses_methods_of(const CoreMaterial& materialData) {
     std::vector<CoreLossesModels> models;
     {
         std::vector<VolumetricCoreLossesMethodType> methods;
-        auto volumetricLossesMethodsVariants = materialData.get_volumetric_losses();
+        const auto& volumetricLossesMethodsVariants = materialData.get_volumetric_losses();
         for (auto& volumetricLossesMethodVariant : volumetricLossesMethodsVariants) {
-            auto volumetricLossesMethods = volumetricLossesMethodVariant.second;
+            const auto& volumetricLossesMethods = volumetricLossesMethodVariant.second;
             for (auto& volumetricLossesMethod : volumetricLossesMethods) {
                 if (std::holds_alternative<CoreLossesMethodData>(volumetricLossesMethod)) {
-                    auto methodData = std::get<CoreLossesMethodData>(volumetricLossesMethod);
+                    const auto& methodData = std::get<CoreLossesMethodData>(volumetricLossesMethod);
                     methods.push_back(methodData.get_method());
                 }
             }
@@ -142,14 +134,15 @@ std::vector<CoreLossesModels> CoreLossesModel::get_methods(CoreMaterialDataOrNam
         }
     }
 
-    if (materialData.get_mass_losses()) {
+    const auto massLosses = materialData.get_mass_losses();
+    if (massLosses) {
         std::vector<MassCoreLossesMethodType> methods;
-        auto massLossesMethodsVariants = materialData.get_mass_losses().value();
+        const auto& massLossesMethodsVariants = massLosses.value();
         for (auto& massLossesMethodVariant : massLossesMethodsVariants) {
-            auto massLossesMethods = massLossesMethodVariant.second;
+            const auto& massLossesMethods = massLossesMethodVariant.second;
             for (auto& massLossesMethod : massLossesMethods) {
                 if (std::holds_alternative<MagnetecCoreLossesMethodData>(massLossesMethod)) {
-                    auto methodData = std::get<MagnetecCoreLossesMethodData>(massLossesMethod);
+                    const auto& methodData = std::get<MagnetecCoreLossesMethodData>(massLossesMethod);
                     methods.push_back(methodData.get_method());
                 }
             }
@@ -161,6 +154,15 @@ std::vector<CoreLossesModels> CoreLossesModel::get_methods(CoreMaterialDataOrNam
     }
 
     return models;
+}
+
+std::vector<CoreLossesModels> CoreLossesModel::get_methods(CoreMaterialDataOrNameUnion material) {
+    // If the material is a string, we have to load its data from the database, unless it is dummy (in order to
+    // avoid long loading operatings)
+    if (std::holds_alternative<std::string>(material) && std::get<std::string>(material) != "dummy") {
+        return core_losses_methods_of(find_core_material_by_name(std::get<std::string>(material)));
+    }
+    return core_losses_methods_of(std::get<CoreMaterial>(material));
 }
 
 // What each model needs in the material's MAS data, for the message of an explicit request the
@@ -217,13 +219,13 @@ static void throw_if_requested_model_not_available(CoreLossesModels model, const
 }
 
 void CoreLosses::throw_if_requested_model_not_available(CoreLossesModels model, const CoreMaterial& material) {
-    OpenMagnetics::throw_if_requested_model_not_available(model, material.get_name(), CoreLossesModel::get_methods(material));
+    OpenMagnetics::throw_if_requested_model_not_available(model, material.get_name(), core_losses_methods_of(material));
 }
 
 std::shared_ptr<CoreLossesModel> CoreLosses::get_core_losses_model(const CoreMaterial& material, const OperatingPointExcitation& excitation) {
     // The models are chosen from the loss methods of the material passed, not from a library entry of
     // the same name: a user's material, or a renamed copy, is priced by its own data (ABT #1911).
-    auto availableMethodsForMaterial = CoreLossesModel::get_methods(material);
+    auto availableMethodsForMaterial = core_losses_methods_of(material);
     if (_requestedCoreLossesModel) {
         return select_core_losses_model(material.get_name(), availableMethodsForMaterial);
     }
@@ -250,7 +252,7 @@ std::shared_ptr<CoreLossesModel> CoreLosses::get_core_losses_model(std::string m
 }
 
 std::shared_ptr<CoreLossesModel> CoreLosses::get_core_losses_model(const CoreMaterial& material) {
-    return select_core_losses_model(material.get_name(), CoreLossesModel::get_methods(material));
+    return select_core_losses_model(material.get_name(), core_losses_methods_of(material));
 }
 
 std::shared_ptr<CoreLossesModel> CoreLosses::select_core_losses_model(const std::string& materialName, const std::vector<CoreLossesModels>& availableMethodsForMaterial) {
@@ -1057,18 +1059,20 @@ std::vector<VolumetricLossesPoint> CoreLossesModel::get_volumetric_losses_data(C
 }
 
 
-CoreLossesMethodData CoreLossesModel::get_method_data(CoreMaterial materialData, std::string method) {
-    auto volumetricLossesMethodsVariants = materialData.get_volumetric_losses();
+// get_method_data on the material in place (its by-value parameter copied the material and its loss tables once per
+// call, which a line-cycle record makes once per switching cycle).
+static CoreLossesMethodData method_data_of(const CoreMaterial& materialData, std::string method) {
+    const auto& volumetricLossesMethodsVariants = materialData.get_volumetric_losses();
     std::transform(method.begin(), method.end(), method.begin(), ::toupper);
 
     for (auto& volumetricLossesMethodVariant : volumetricLossesMethodsVariants) {
         if (volumetricLossesMethodVariant.first != "default") {
             continue;
         }
-        auto volumetricLossesMethods = volumetricLossesMethodVariant.second;
+        const auto& volumetricLossesMethods = volumetricLossesMethodVariant.second;
         for (auto& volumetricLossesMethod : volumetricLossesMethods) {
             if (std::holds_alternative<CoreLossesMethodData>(volumetricLossesMethod)) {
-                auto methodData = std::get<CoreLossesMethodData>(volumetricLossesMethod);
+                const auto& methodData = std::get<CoreLossesMethodData>(volumetricLossesMethod);
                 std::string methodDataNameString = to_string(methodData.get_method());
                 std::transform(methodDataNameString.begin(), methodDataNameString.end(), methodDataNameString.begin(), ::toupper);
 
@@ -1079,6 +1083,10 @@ CoreLossesMethodData CoreLossesModel::get_method_data(CoreMaterial materialData,
         }
     }
     throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING, "Material " + materialData.get_name() + " does not have method: " + method);
+}
+
+CoreLossesMethodData CoreLossesModel::get_method_data(CoreMaterial materialData, std::string method) {
+    return method_data_of(materialData, std::move(method));
 }
 
 static CoreMaterial resolve_core_material_for_losses(const CoreMaterialDataOrNameUnion& material) {
@@ -1092,7 +1100,7 @@ static CoreMaterial resolve_core_material_for_losses(const CoreMaterialDataOrNam
 
 std::pair<double, double> CoreLossesModel::get_steinmetz_fitted_span(CoreMaterialDataOrNameUnion material) {
     CoreMaterial materialData = resolve_core_material_for_losses(material);
-    auto steinmetzData = CoreLossesModel::get_method_data(materialData, "Steinmetz");
+    auto steinmetzData = method_data_of(materialData, "Steinmetz");
     if (!steinmetzData.get_ranges() || steinmetzData.get_ranges()->empty()) {
         throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING, "Material " + materialData.get_name() + " has a Steinmetz method with no ranges");
     }
@@ -1128,7 +1136,7 @@ bool CoreLossesModel::is_frequency_in_steinmetz_span(CoreMaterialDataOrNameUnion
 SteinmetzCoreLossesMethodRangeDatum CoreLossesModel::get_steinmetz_coefficients(CoreMaterialDataOrNameUnion material, double frequency) {
     CoreMaterial materialData = resolve_core_material_for_losses(material);
 
-    auto steinmetzData = CoreLossesModel::get_method_data(materialData, "Steinmetz");
+    auto steinmetzData = method_data_of(materialData, "Steinmetz");
     if (!steinmetzData.get_ranges() || steinmetzData.get_ranges()->empty()) {
         throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING, "Material " + materialData.get_name() + " has a Steinmetz method with no ranges");
     }
@@ -3272,7 +3280,7 @@ std::map<std::string, double> CoreLossesRoshenModel::get_roshen_parameters(Core 
     std::map<std::string, double> roshenParameters;
     auto materialData =  core.resolve_material();
 
-    auto roshenData = CoreLossesModel::get_method_data(materialData, "roshen");
+    auto roshenData = method_data_of(materialData, "roshen");
 
     roshenParameters = get_hysteresis_parameters(materialData, temperature);
 
@@ -3518,15 +3526,37 @@ static double roshen_eddy_current_geometry_coefficient(const Core& core) {
     return centralColumnArea / 8 / std::numbers::pi;
 }
 
-std::pair<std::vector<double>, std::vector<double>> CoreLossesRoshenModel::get_bh_loop(std::map<std::string, double> parameters,
-                                                            OperatingPointExcitation excitation) {
-    double saturationMagneticFieldStrength = parameters["saturationMagneticFieldStrength"];
-    double saturationMagneticFluxDensity = parameters["saturationMagneticFluxDensity"];
-    double coerciveForce = parameters["coerciveForce"];
-    double remanence = parameters["remanence"];
-    auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
-    double magneticFluxDensityAcPeak = magneticFluxDensity.get_processed().value().get_peak().value() -
-                                       magneticFluxDensity.get_processed().value().get_offset();
+// The static major loop of get_bh_loop on its field-strength grid, -Hs to Hs in steps of
+// roshenMagneticFieldStrengthStep (accumulated, as the grid always was): both branches before the minor-loop shift.
+// They depend on the four loop parameters only, while a line-cycle record asks for one minor loop per switching
+// cycle at the same parameters (hundreds of B peaks), so the last ones built are kept per thread, keyed on the exact
+// bits of the four parameters. A shifted branch is the same subtraction of delta from these values as before.
+namespace {
+struct RoshenMajorLoopBranches {
+    double saturationMagneticFieldStrength;
+    double saturationMagneticFluxDensity;
+    double coerciveForce;
+    double remanence;
+    std::vector<double> upper;
+    std::vector<double> lower;
+};
+
+bool same_double_bits(double a, double b) {
+    return std::memcmp(&a, &b, sizeof(double)) == 0;
+}
+
+const RoshenMajorLoopBranches& roshen_major_loop_branches(double saturationMagneticFieldStrength, double saturationMagneticFluxDensity,
+                                                          double coerciveForce, double remanence, double fieldStrengthStep) {
+    // Two entries: a loss-temperature solve alternates between at most a few temperatures at a time.
+    thread_local std::array<std::optional<RoshenMajorLoopBranches>, 2> entries;
+    thread_local size_t nextEntry = 0;
+    for (const auto& entry : entries) {
+        if (entry && same_double_bits(entry->saturationMagneticFieldStrength, saturationMagneticFieldStrength) &&
+            same_double_bits(entry->saturationMagneticFluxDensity, saturationMagneticFluxDensity) &&
+            same_double_bits(entry->coerciveForce, coerciveForce) && same_double_bits(entry->remanence, remanence)) {
+            return *entry;
+        }
+    }
     auto majorLoopParameters = get_major_loop_parameters(saturationMagneticFieldStrength, saturationMagneticFluxDensity,
                                                          coerciveForce, remanence);
 
@@ -3535,7 +3565,7 @@ std::pair<std::vector<double>, std::vector<double>> CoreLossesRoshenModel::get_b
     double b2 = majorLoopParameters["b2"];
 
     std::vector<double> magneticFieldStrengthPoints;
-    for (double i = -saturationMagneticFieldStrength; i <= saturationMagneticFieldStrength; i += constants.roshenMagneticFieldStrengthStep) {
+    for (double i = -saturationMagneticFieldStrength; i <= saturationMagneticFieldStrength; i += fieldStrengthStep) {
         magneticFieldStrengthPoints.push_back(i);
     }
 
@@ -3565,44 +3595,63 @@ std::pair<std::vector<double>, std::vector<double>> CoreLossesRoshenModel::get_b
         return magneticFluxDensity;
     };
 
-    auto calculate_magnetic_flux_density_waveform = [&](std::vector<double> magneticFieldStrength_waveform,
-                                                  bool loop_is_upper = true) {
-        std::vector<double> magneticFluxDensityWaveform;
-        for (auto& magneticFieldStrength : magneticFieldStrength_waveform) {
-            double magneticFluxDensity = calculate_magnetic_flux_density(magneticFieldStrength, loop_is_upper);
-            magneticFluxDensityWaveform.push_back(magneticFluxDensity);
-        }
+    RoshenMajorLoopBranches branches{saturationMagneticFieldStrength, saturationMagneticFluxDensity, coerciveForce, remanence, {}, {}};
+    branches.upper.reserve(magneticFieldStrengthPoints.size());
+    branches.lower.reserve(magneticFieldStrengthPoints.size());
+    for (auto& magneticFieldStrength : magneticFieldStrengthPoints) {
+        branches.upper.push_back(calculate_magnetic_flux_density(magneticFieldStrength, true));
+    }
+    for (auto& magneticFieldStrength : magneticFieldStrengthPoints) {
+        branches.lower.push_back(calculate_magnetic_flux_density(magneticFieldStrength, false));
+    }
+    auto& slot = entries[nextEntry];
+    nextEntry = (nextEntry + 1) % entries.size();
+    slot = std::move(branches);
+    return *slot;
+}
 
-        return magneticFluxDensityWaveform;
-    };
+// The minor-loop shift of get_bh_loop for these parameters at B peak.
+double roshen_bh_loop_delta(const std::map<std::string, double>& parameters, double magneticFluxDensityAcPeak) {
+    auto majorLoopParameters = get_major_loop_parameters(parameters.at("saturationMagneticFieldStrength"),
+                                                         parameters.at("saturationMagneticFluxDensity"),
+                                                         parameters.at("coerciveForce"), parameters.at("remanence"));
+    return roshen_compute_minor_loop_delta(parameters.at("coerciveForce"), majorLoopParameters["a1"], majorLoopParameters["b1"],
+                                           majorLoopParameters["b2"], magneticFluxDensityAcPeak,
+                                           parameters.at("saturationMagneticFluxDensity"));
+}
 
-    std::vector<double> upperMagneticFluxDensityWaveform =
-        calculate_magnetic_flux_density_waveform(magneticFieldStrengthPoints, true);
-    std::vector<double> lowerMagneticFluxDensityWaveform =
-        calculate_magnetic_flux_density_waveform(magneticFieldStrengthPoints, false);
+// The minor loop's AC peak get_bh_loop cuts to: the processed peak above the offset.
+double roshen_bh_loop_ac_peak(const OperatingPointExcitation& excitation) {
+    const auto& processed = mas_access::processed_ref(mas_access::magnetic_flux_density_ref(excitation).value()).value();
+    return processed.get_peak().value() - processed.get_offset();
+}
+}  // namespace
+
+std::pair<std::vector<double>, std::vector<double>> CoreLossesRoshenModel::get_bh_loop(std::map<std::string, double> parameters,
+                                                            OperatingPointExcitation excitation) {
+    double saturationMagneticFieldStrength = parameters["saturationMagneticFieldStrength"];
+    double saturationMagneticFluxDensity = parameters["saturationMagneticFluxDensity"];
+    double coerciveForce = parameters["coerciveForce"];
+    double remanence = parameters["remanence"];
+    double magneticFluxDensityAcPeak = roshen_bh_loop_ac_peak(excitation);
+    const auto& branches = roshen_major_loop_branches(saturationMagneticFieldStrength, saturationMagneticFluxDensity,
+                                                      coerciveForce, remanence, constants.roshenMagneticFieldStrengthStep);
 
     // Compute the analytical vertical offset (delta) to create the minor loop at B_peak
-    double delta = roshen_compute_minor_loop_delta(coerciveForce, a1, b1, b2, magneticFluxDensityAcPeak,
-                                                   saturationMagneticFluxDensity);
-    
-    // Apply the offset: shift upper branch down, lower branch up
-    for (size_t i = 0; i < upperMagneticFluxDensityWaveform.size(); i++) {
-        upperMagneticFluxDensityWaveform[i] -= delta;
-    }
-    for (size_t i = 0; i < lowerMagneticFluxDensityWaveform.size(); i++) {
-        lowerMagneticFluxDensityWaveform[i] += delta;
-    }
+    double delta = roshen_bh_loop_delta(parameters, magneticFluxDensityAcPeak);
 
-    // Cut to the target B range
+    // Apply the offset (upper branch down, lower branch up) and cut to the target B range
     std::vector<double> cutUpperMagneticFluxDensityWaveform;
     std::vector<double> cutLowerMagneticFluxDensityWaveform;
-    for (auto& elem : upperMagneticFluxDensityWaveform) {
+    for (double base : branches.upper) {
+        double elem = base - delta;
         if (elem <= magneticFluxDensityAcPeak && elem >= -magneticFluxDensityAcPeak) {
             cutUpperMagneticFluxDensityWaveform.push_back(elem);
         }
     }
 
-    for (auto& elem : lowerMagneticFluxDensityWaveform) {
+    for (double base : branches.lower) {
+        double elem = base + delta;
         if (elem <= magneticFluxDensityAcPeak && elem >= -magneticFluxDensityAcPeak) {
             cutLowerMagneticFluxDensityWaveform.push_back(elem);
         }
@@ -4266,7 +4315,7 @@ double CoreLossesProprietaryModel::compute_core_volumetric_losses(const CoreMate
     auto volumetricMethod = get_proprietary_volumetric_method(coreMaterial);
 
     if (volumetricMethod == VolumetricCoreLossesMethodType::MICROMETALS) {
-        auto micrometalsData = CoreLossesModel::get_method_data(coreMaterial, "micrometals");
+        auto micrometalsData = method_data_of(coreMaterial, "micrometals");
         double a = micrometalsData.get_a().value();
         double b = micrometalsData.get_b().value();
         double c = micrometalsData.get_c().value();
@@ -4275,7 +4324,7 @@ double CoreLossesProprietaryModel::compute_core_volumetric_losses(const CoreMate
     }
 
     else if (volumetricMethod == VolumetricCoreLossesMethodType::MAGNETICS) {
-        auto magneticsData = CoreLossesModel::get_method_data(coreMaterial, "magnetics");
+        auto magneticsData = method_data_of(coreMaterial, "magnetics");
         double a = magneticsData.get_a().value();
         double b = magneticsData.get_b().value();
         double c = magneticsData.get_c().value();
@@ -4287,7 +4336,7 @@ double CoreLossesProprietaryModel::compute_core_volumetric_losses(const CoreMate
         }
     }
     else if (volumetricMethod == VolumetricCoreLossesMethodType::POCO) {
-        auto magneticsData = CoreLossesModel::get_method_data(coreMaterial, "poco");
+        auto magneticsData = method_data_of(coreMaterial, "poco");
         double a = magneticsData.get_a().value();
         double b = magneticsData.get_b().value();
         double c = magneticsData.get_c().value();
@@ -4295,7 +4344,7 @@ double CoreLossesProprietaryModel::compute_core_volumetric_losses(const CoreMate
     }
 
     else if (volumetricMethod == VolumetricCoreLossesMethodType::TDG) {
-        auto magneticsData = CoreLossesModel::get_method_data(coreMaterial, "tdg");
+        auto magneticsData = method_data_of(coreMaterial, "tdg");
         double a = magneticsData.get_a().value();
         double b = magneticsData.get_b().value();
         double c = magneticsData.get_c().value();
@@ -4631,7 +4680,7 @@ double CoreLossesLossFactorModel::compute_core_volumetric_losses(const CoreMater
 double CoreLossesLossFactorModel::get_loss_factor(const CoreMaterial& coreMaterial, double frequency) {
     if (!lossFactorInterps.contains(coreMaterial.get_name())) {
 
-        auto lossFactorData = CoreLossesModel::get_method_data(coreMaterial, "lossFactor");
+        auto lossFactorData = method_data_of(coreMaterial, "lossFactor");
         auto lossFactorPoints = lossFactorData.get_factors().value();
 
         // Sort by frequency so spline x values are strictly increasing
@@ -4816,7 +4865,7 @@ double CoreLossesProprietaryModel::get_frequency_from_core_losses(Core core,
     auto volumetricMethod = get_proprietary_volumetric_method(materialData);
 
     if (volumetricMethod == VolumetricCoreLossesMethodType::MICROMETALS) {
-        auto micrometalsData = CoreLossesModel::get_method_data(materialData, "micrometals");
+        auto micrometalsData = method_data_of(materialData, "micrometals");
         double a = micrometalsData.get_a().value();
         double b = micrometalsData.get_b().value();
         double c = micrometalsData.get_c().value();
@@ -4828,7 +4877,7 @@ double CoreLossesProprietaryModel::get_frequency_from_core_losses(Core core,
     }
 
     if (volumetricMethod == VolumetricCoreLossesMethodType::MAGNETICS) {
-        auto magneticsData = CoreLossesModel::get_method_data(materialData, "magnetics");
+        auto magneticsData = method_data_of(materialData, "magnetics");
         double a = magneticsData.get_a().value();
         double b = magneticsData.get_b().value();
         double c = magneticsData.get_c().value();
@@ -4836,7 +4885,7 @@ double CoreLossesProprietaryModel::get_frequency_from_core_losses(Core core,
     }
 
     if (volumetricMethod == VolumetricCoreLossesMethodType::POCO) {
-        auto magneticsData = CoreLossesModel::get_method_data(materialData, "poco");
+        auto magneticsData = method_data_of(materialData, "poco");
         double a = magneticsData.get_a().value();
         double b = magneticsData.get_b().value();
         double c = magneticsData.get_c().value();
