@@ -157,9 +157,12 @@ class Inputs : public MAS::Inputs {
     static bool include_dc_offset_into_magnetizing_current(const OperatingPoint& operatingPoint, const std::vector<double>& turnsRatios);
     // The DC of a winding's magnetizing current, taken where that winding carries the magnetizing
     // MMF alone (ABT #907, #1467); 0 when it never does. Throws when a winding has no current (ABT #1814).
+    // peakAnchorCurrent, here and in the functions that pass it on, receives the current of the peak anchor when that
+    // is the one that applied: a caller that has the core's magnetisation curve reads that current's flux there (ABT #2502).
     static double calculate_magnetizing_current_dc_anchor(const OperatingPoint& operatingPoint, size_t windingIndex, Waveform voltageSampledWaveform, double magnetizingInductance);
     static double calculate_magnetizing_current_dc_anchor(OperatingPointExcitation excitation, const WindingConduction& conduction, size_t windingIndex,
-                                                          Waveform voltageSampledWaveform, double magnetizingInductance);
+                                                          Waveform voltageSampledWaveform, double magnetizingInductance,
+                                                          std::optional<double>* peakAnchorCurrent = nullptr);
     // The ampere-turn current of an operating point: i_m(t) = sum_k c_k (N_k/N_ref) i_k(t), the
     // single current that, in the reference winding, drives the same core flux as all windings
     // together. Built from the winding current WAVEFORMS on one common period grid, so phase and
@@ -274,7 +277,8 @@ class Inputs : public MAS::Inputs {
                                                             double magnetizingInductance,
                                                             const std::vector<double>& turnsRatios,
                                                             bool compress,
-                                                            std::optional<Waveform> voltageSampledWaveform = std::nullopt);
+                                                            std::optional<Waveform> voltageSampledWaveform = std::nullopt,
+                                                            std::optional<double>* peakAnchorCurrent = nullptr);
     static SignalDescriptor calculate_magnetizing_current(OperatingPointExcitation& excitation,
                                                             double magnetizingInductance,
                                                             bool compress,
@@ -430,7 +434,8 @@ class Inputs : public MAS::Inputs {
     static SignalDescriptor get_multiport_inductor_magnetizing_current(const OperatingPoint& operatingPoint,
                                                                        double magnetizingInductance,
                                                                        const std::vector<double>& turnsRatios,
-                                                                       std::optional<std::vector<IsolationSide>> isolationSides);
+                                                                       std::optional<std::vector<IsolationSide>> isolationSides,
+                                                                       std::optional<double>* peakAnchorCurrent = nullptr);
     // Whether get_multiport_inductor_magnetizing_current takes the magnetizing current from the primary voltage
     // (Faraday, a flyback with a primary voltage) rather than from the windings' ampere-turn sum (ABT #1942).
     static bool is_multiport_inductor_magnetizing_current_from_voltage(const OperatingPointExcitation& primaryExcitation);

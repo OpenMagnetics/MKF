@@ -445,6 +445,9 @@ static std::optional<double> excitation_dc_current(const OperatingPointExcitatio
 struct MagnetizingCurrentStamp {
     bool biasFluxImposed = false;
     bool fromVoltage = false;
+    // The current of the DC anchor, when the magnetizing current was anchored on a winding current's peak (a CCM
+    // flyback): Ampere holds there whatever the inductance, so its flux is the load line's (ABT #2502).
+    std::optional<double> peakAnchorCurrent;
 };
 static MagnetizingCurrentStamp stamp_magnetizing_current(OperatingPoint* operatingPoint, Core& core, Coil& coil, std::optional<Topology> topology,
                                                          double magnetizingInductance, double frequency) {
@@ -561,7 +564,7 @@ static MagnetizingCurrentStamp stamp_magnetizing_current(OperatingPoint* operati
         auto magnetizingCurrent = Inputs::get_multiport_inductor_magnetizing_current(*operatingPoint, magnetizingInductance, coil.get_turns_ratios(),
             numberWindings < operatingPoint->get_excitations_per_winding().size()
                 ? std::optional<std::vector<IsolationSide>>()
-                : std::optional<std::vector<IsolationSide>>(coil.get_isolation_sides()));
+                : std::optional<std::vector<IsolationSide>>(coil.get_isolation_sides()), &stamp.peakAnchorCurrent);
         // Edited in place, after everything that can throw: only its magnetizing current changes (the copy of the
         // whole excitation, written back over itself, copied every waveform it carries).
         stamp.fromVoltage = Inputs::is_multiport_inductor_magnetizing_current_from_voltage(primaryExcitation);
@@ -579,7 +582,7 @@ static MagnetizingCurrentStamp stamp_magnetizing_current(OperatingPoint* operati
         stamp.fromVoltage = true;
 
         auto magnetizingCurrent = Inputs::calculate_magnetizing_current(*operatingPoint, 0, magnetizingInductance, turnsRatios, false,
-                                                                        sampledVoltageWaveform);
+                                                                        sampledVoltageWaveform, &stamp.peakAnchorCurrent);
 
         auto sampledMagnetizingCurrentWaveform = Inputs::calculate_sampled_waveform(magnetizingCurrent.get_waveform().value(), excitation.get_frequency());
         // Replace the stored waveform with the resampled (power-of-2)
@@ -1132,10 +1135,37 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                         magnetizingCurrentReachesZero = lowestPolarisedCurrent <= 0 && lowestPolarisedCurrent >= -reversalTolerance;
                     }
 
-                    if (magnetizingCurrentReachesZero) {
+                    // ABT #2502 (Alf, 2026-11-22): a current anchored on the winding current's peak takes the same path.
+                    // Ampere gives the MMF at that instant, N Ipk, and the load line the flux density there; Faraday
+                    // gives the swing below it, and the current is read back from the load line sample by sample.
+                    // Converting the peak with the linear inductance put it above B_sat below the knee's collapse, and
+                    // at 0.003 T once the solve reached mu = 1 (the whole swing below it, on a negative bias).
+                    const bool peakAnchoredOnCurve = dcBias && !lineCycleRecordUnderImposedMagnetomotiveForce && stamp.fromVoltage &&
+                                                     stamp.peakAnchorCurrent.has_value();
+                    const bool fluxDensityReadOnCurve = magnetizingCurrentReachesZero || peakAnchoredOnCurve;
+                    if (fluxDensityReadOnCurve) {
                         const auto& coreMaterial = core.resolve_material_unstored(resolvedMaterialStorage);
                         // The caller's share keeps the cached curve alive for every sample (ABT #838).
                         const auto magnetisationCurve = InitialPermeability::get_magnetisation_curve(coreMaterial, temperature, frequency);
+                        if (peakAnchoredOnCurve) {
+                            const double anchorCurrent = stamp.peakAnchorCurrent.value();
+                            const double anchorFluxDensity = InitialPermeability::get_dc_operating_point_for_magnetomotive_force(
+                                *magnetisationCurve, numberTurnsPrimary * fabs(anchorCurrent), effectiveLength, effectiveArea, gapReluctance).second;
+                            auto anchoredWaveform = magneticFluxDensity.get_waveform().value();
+                            auto& anchoredData = anchoredWaveform.get_mutable_data();
+                            // The anchor is the flux linkage's maximum (calculate_magnetizing_current_dc_anchor).
+                            const double anchorShift = std::copysign(anchorFluxDensity, anchorCurrent) - *std::max_element(anchoredData.begin(), anchoredData.end());
+                            for (auto& datum : anchoredData) {
+                                datum += anchorShift;
+                            }
+                            auto anchoredProcessed = Inputs::calculate_basic_processed_data(anchoredWaveform);
+                            magneticFluxDensity.set_waveform(std::move(anchoredWaveform));
+                            auto anchoredHarmonics = magneticFluxDensity.get_harmonics().value();
+                            anchoredHarmonics.get_mutable_amplitudes()[0] = fabs(fluxDensityAverage + anchorShift);
+                            magneticFluxDensity.set_harmonics(std::move(anchoredHarmonics));
+                            magneticFluxDensity.set_processed(std::move(anchoredProcessed));
+                            result.second = magneticFluxDensity;
+                        }
                         if (stamp.fromVoltage) {
                             // Faraday's flux density (stored as its corners) on as many samples as the magnetizing current has.
                             auto fluxDensityWaveformSampled = Inputs::calculate_sampled_waveform(magneticFluxDensity.get_waveform().value(), frequency,
@@ -1193,7 +1223,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                     // density is the load line's B(H) on the magnetisation curve, so the offset is
                     // moved there. When the bias is a line-frequency swing rather than DC, the swing
                     // is left as computed.
-                    if (!magnetizingCurrentReachesZero && bFieldDcBias == fabs(fluxDensityAverage) && fluxDensityAverage != 0) {
+                    if (!fluxDensityReadOnCurve && bFieldDcBias == fabs(fluxDensityAverage) && fluxDensityAverage != 0) {
                         double offsetShift = std::copysign(loadLineFluxDensity, fluxDensityAverage) - fluxDensityAverage;
                         auto shiftedWaveform = magneticFluxDensity.get_waveform().value();
                         for (auto& datum : shiftedWaveform.get_mutable_data()) {

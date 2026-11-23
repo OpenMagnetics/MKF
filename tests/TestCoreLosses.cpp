@@ -5542,12 +5542,15 @@ TEST_CASE("Flyback DC operating point stays on the material's DC-bias table when
     CHECK(std::isfinite(sweep.get_y_points()[0]));
     CHECK(sweep.get_y_points()[0] > 0);
 
-    // At 200 kHz the same currents have no fixed point: F(mu) jumps from ~50 to the saturated 1 across mu = 26.1
-    // (the table end, 483.4 A/m), and F(1) = 59.9, so mu = 1 is no root either. The solve closes on the step, not
-    // on a root, and the core is saturated: the point is flagged and carries no loss.
+    // At 200 kHz the same currents found no fixed point while the flyback's peak current was turned into flux
+    // through the linear inductance: at mu = 1 that peak was worth almost no flux, F(mu) jumped across the table
+    // end and the point was flagged saturated with L = 0.97 uH. The peak current now sets B through the gap's load
+    // line and the material's curve (ABT #2502): the point has a root, B peak 0.351 T under B_sat 0.562 T and
+    // L = 37.5 uH, so it is unsaturated and carries a loss. The no-root criterion lost this case as its test.
     REQUIRE(sweep.get_saturated_points().value().size() == 2);
-    CHECK(sweep.get_saturated_points().value()[1]);
-    CHECK(std::isnan(sweep.get_y_points()[1]));
+    CHECK_FALSE(sweep.get_saturated_points().value()[1]);
+    CHECK(std::isfinite(sweep.get_y_points()[1]));
+    CHECK(sweep.get_y_points()[1] > 0);
 }
 
 // ABT #1602: the core-loss series resistance builds an equivalent winding N = sqrt(L * R). It used to

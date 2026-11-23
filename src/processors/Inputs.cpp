@@ -671,7 +671,8 @@ double Inputs::calculate_magnetizing_current_dc_anchor(const OperatingPoint& ope
 }
 
 double Inputs::calculate_magnetizing_current_dc_anchor(OperatingPointExcitation excitation, const WindingConduction& conduction, size_t windingIndex,
-                                                       Waveform voltageSampledWaveform, double magnetizingInductance) {
+                                                       Waveform voltageSampledWaveform, double magnetizingInductance,
+                                                       std::optional<double>* peakAnchorCurrent) {
     if (!mas_access::current_ref(excitation)) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "calculate_magnetizing_current_dc_anchor: winding " + std::to_string(windingIndex) +
                                     " has no current to anchor the DC of its magnetizing current on");
@@ -765,7 +766,11 @@ double Inputs::calculate_magnetizing_current_dc_anchor(OperatingPointExcitation 
         }
         const auto& excursion = centeredMagnetizingWaveform.get_data();
         double excursionAboveMean = *max_element(excursion.begin(), excursion.end());
-        return currentSignal.get_processed()->get_peak().value() - excursionAboveMean;
+        const double peakCurrent = currentSignal.get_processed()->get_peak().value();
+        if (peakAnchorCurrent) {
+            *peakAnchorCurrent = peakCurrent;
+        }
+        return peakCurrent - excursionAboveMean;
     }
     auto excursionOnGrid = calculate_sampled_waveform(centeredMagnetizingWaveform, excitation.get_frequency(), current.size(), current.size()).get_data();
     if (excursionOnGrid.size() != current.size()) {
@@ -1084,7 +1089,8 @@ bool Inputs::is_multiport_inductor_magnetizing_current_from_voltage(const Operat
 SignalDescriptor Inputs::get_multiport_inductor_magnetizing_current(const OperatingPoint& operatingPoint,
                                                                    double magnetizingInductance,
                                                                    const std::vector<double>& turnsRatios,
-                                                                   std::optional<std::vector<IsolationSide>> isolationSides) {
+                                                                   std::optional<std::vector<IsolationSide>> isolationSides,
+                                                                   std::optional<double>* peakAnchorCurrent) {
     // ABT #1467: this used to rebuild a TRIANGULAR current from the primary current's offset, peak
     // to peak and duty cycle, rising over D and falling over the whole of 1 - D. A DCM flyback's
     // dead time was lost (its flux, and so its core losses, read from the wrong shape), and for
@@ -1098,7 +1104,7 @@ SignalDescriptor Inputs::get_multiport_inductor_magnetizing_current(const Operat
     if (is_multiport_inductor_magnetizing_current_from_voltage(excitation)) {
         // The windings conduct alternately: the flux comes from the primary voltage (Faraday),
         // anchored where the primary carries the whole magnetizing MMF alone.
-        magnetizingCurrent = calculate_magnetizing_current(operatingPoint, 0, magnetizingInductance, turnsRatios, false);
+        magnetizingCurrent = calculate_magnetizing_current(operatingPoint, 0, magnetizingInductance, turnsRatios, false, std::nullopt, peakAnchorCurrent);
     }
     else {
         // No primary voltage on a flyback, or every winding on one isolation side: the ampere-turn
@@ -2797,7 +2803,8 @@ SignalDescriptor Inputs::calculate_magnetizing_current(const OperatingPoint& ope
                                                        double magnetizingInductance,
                                                        const std::vector<double>& turnsRatios,
                                                        bool compress,
-                                                       std::optional<Waveform> voltageSampledWaveform) {
+                                                       std::optional<Waveform> voltageSampledWaveform,
+                                                       std::optional<double>* peakAnchorCurrent) {
     // The one decision for a winding's magnetizing current (ABT #1467): Faraday on the winding's
     // voltage, plus the DC the currents give. process_operating_point, the core adviser's
     // pre-processing and the autocomplete paths all come through here, so they cannot drift apart.
@@ -2838,7 +2845,7 @@ SignalDescriptor Inputs::calculate_magnetizing_current(const OperatingPoint& ope
         // operating point, no DC from the currents. Some with and some without: throws (ABT #1814).
         auto conduction = calculate_winding_conduction(operatingPoint);
         if (conduction && windings_alternate(conduction.value())) {
-            dcCurrent = calculate_magnetizing_current_dc_anchor(excitation, conduction.value(), windingIndex, voltageSampledWaveform.value(), magnetizingInductance);
+            dcCurrent = calculate_magnetizing_current_dc_anchor(excitation, conduction.value(), windingIndex, voltageSampledWaveform.value(), magnetizingInductance, peakAnchorCurrent);
         }
     }
     return integrate_magnetizing_current(excitation, voltageSampledWaveform.value(), magnetizingInductance, compress, dcCurrent);
