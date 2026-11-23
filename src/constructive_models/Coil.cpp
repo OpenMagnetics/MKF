@@ -2093,6 +2093,69 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         auto found = windowIndexBySection.find(sectionName);
         return found == windowIndexBySection.end() ? 0 : found->second;
     };
+    // ABT #2492 (Alf, 2026-11-22: "each terminal lead ends at its own winding window's border, measured from the
+    // column it wraps"). windowOuterX above is window 0's border, and every terminal lead used to run towards +x to
+    // it, whatever window its turns are wound in: a winding on the left leg of an E 42 sent its lead from x = -13.6 mm
+    // across the main column and the Primary to +15.5 mm, counting every layer on the way as crossed.
+    // A lead is planned in ITS OWN window's frame: the coordinate `along` grows from the lead's turn towards the
+    // border it leaves by. Once the groups are in place (apply_group_window_sides) that direction is the real +x in a
+    // window whose winding wraps the main column on the +x side or a leg on the -x side, and the real -x in the
+    // mirror cases (a leg on the +x side: its winding hugs the leg, and the lead runs back towards the main column).
+    // Before that, every group stands in the +x winding frame and the border is its own window's, mirrored to +x.
+    // Only layers wound in the lead's window can lie between its turn and that border.
+    // Contiguous layers keep the layer axis on the real y, which no window mirrors: their frame is window 0's, as it was.
+    struct LeadFrame {
+        size_t window = 0;
+        bool ownWindowOnly = false;   // false: the historical test over every layer (contiguous layers)
+        double outward = 1.0;         // the real x direction the lead runs in: +1 or -1
+        double border = 0;            // the window border the lead leaves by, in `along` coordinates
+        double along(double x) const { return outward * x; }
+    };
+    const auto leadFrameWindows = bobbin.get_processed_description().value().get_winding_windows();
+    auto leadFrameOf = [&](const std::string& sectionName) -> LeadFrame {
+        LeadFrame frame;
+        frame.border = windowOuterX;
+        if (layersAreContiguous) {
+            return frame;
+        }
+        frame.window = windowIndexOf(sectionName);
+        frame.ownWindowOnly = true;
+        if (frame.window >= leadFrameWindows.size()) {
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                "Real winding: section '" + sectionName + "' is wound in winding window " + std::to_string(frame.window) +
+                                " but the bobbin states " + std::to_string(leadFrameWindows.size()) + ", so its terminal leads have no border to run to");
+        }
+        const auto& ownWindow = leadFrameWindows[frame.window];
+        if (!(ownWindow.get_coordinates() && ownWindow.get_width())) {
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                "Real winding: winding window " + std::to_string(frame.window) + " states no position and width, so the "
+                                "terminal leads of section '" + sectionName + "' have no border to run to");
+        }
+        const double centre = ownWindow.get_coordinates().value()[0];
+        const double width = ownWindow.get_width().value();
+        if (!_groupWindowSidesApplied) {
+            frame.border = std::abs(centre) + width / 2;
+        }
+        else {
+            const auto mainColumnEdge = leadFrameWindows[0].get_column();
+            const auto columnEdge = ownWindow.get_column();
+            const bool lateralWound = columnEdge && (!mainColumnEdge || columnEdge.value() != mainColumnEdge.value());
+            const double side = centre < 0 ? -1.0 : 1.0;
+            frame.outward = lateralWound ? -side : side;
+            frame.border = frame.outward * (centre + frame.outward * width / 2);
+        }
+        // A winding that does not fit is drawn honestly (see windowOuterX): the border follows the copper.
+        for (const auto& layer : allLayers) {
+            if (windowIndexOf(layer.get_section().value_or("")) != frame.window) {
+                continue;
+            }
+            frame.border = std::max(frame.border, frame.along(layer.get_coordinates()[0]) + layer.get_dimensions()[0] / 2);
+        }
+        return frame;
+    };
+    auto inLeadWindow = [&](const LeadFrame& frame, const Layer& layer) {
+        return !frame.ownWindowOnly || windowIndexOf(layer.get_section().value_or("")) == frame.window;
+    };
     // ABT #1487 (Alf, 2026-09-29): "When a contiguous section in a concentric core contains a full
     // parallel, the terminal must be local to that section." On a concentric core whose sections
     // are stacked AXIALLY (contiguous arrangement; not a toroid, not planar), a (winding, parallel)
@@ -2671,15 +2734,19 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
     auto crossedLayerCountAndSignature = [&](const Turn& connectingTurn) {
         std::string signature;
         size_t count = 0;
-        double turnX = connectingTurn.get_coordinates()[0];
+        const LeadFrame frame = leadFrameOf(connectingTurn.get_section().value_or(""));
+        double turnX = frame.along(connectingTurn.get_coordinates()[0]);
         // ABT #1487: a section-local lead crosses its own section's layers only.
         const auto localSection = terminalLeadSection(connectingTurn);
         for (const auto& crossed : allLayers) {
-            double crossedX = crossed.get_coordinates()[0];
+            if (!inLeadWindow(frame, crossed)) {
+                continue;
+            }
+            double crossedX = frame.along(crossed.get_coordinates()[0]);
             if (localSection && crossed.get_section().value_or("") != localSection.value()) {
                 continue;
             }
-            if (crossedX > turnX + 1e-9 && crossedX < windowOuterX) {
+            if (crossedX > turnX + 1e-9 && crossedX < frame.border) {
                 signature += crossed.get_name() + "|";
                 ++count;
             }
@@ -2778,12 +2845,17 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         if (!_woundWithOverflowAllowed || _turnAxisOverflowSlotsPerLayer.empty()) {
             return std::nullopt;
         }
-        const double turnX = connectingTurn.get_coordinates()[0];
+        const LeadFrame frame = leadFrameOf(connectingTurn.get_section().value_or(""));
+        const double windowOuterX = frame.border;   // this lead's own border, in its own frame
+        const double turnX = frame.along(connectingTurn.get_coordinates()[0]);
         const double edge = windowEdgeY(windowIndexOf(connectingTurn.get_section().value_or("")), atTop);
         const double outward = atTop ? 1.0 : -1.0;
         std::set<std::string> ownCrossedLayers;
         for (const auto& crossed : allLayers) {
-            const double crossedX = crossed.get_coordinates()[0];
+            if (!inLeadWindow(frame, crossed)) {
+                continue;
+            }
+            const double crossedX = frame.along(crossed.get_coordinates()[0]);
             // The lead's own layer counts too: grown past the edge, its last wire is the lead's turn.
             // Only a layer the blocked fill grew along its turn axis (an overflow): copper past the
             // edge for any other reason keeps the lead on its edge row.
@@ -2979,11 +3051,46 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                 routes.back().plannedBendRadius = terminal_lead_bend_radius(windingName, end, parallel);
             }
         };
-        double turnX = connectingTurn.get_coordinates()[0];
+        // ABT #2492: the lead is planned in its own window's frame (leadFrameOf). From here to the end of this lead,
+        // every position on the layer axis -- turnX, windowOuterX, the layers crossed, the stub -- is `along` it, and
+        // what the lead emitted is put back on the real x when it is done (toRealX), on every way out.
+        const LeadFrame leadFrame = leadFrameOf(connectingTurn.get_section().value_or(""));
+        const double windowOuterX = leadFrame.border;
+        double turnX = leadFrame.along(connectingTurn.get_coordinates()[0]);
         double turnY = connectingTurn.get_coordinates()[1];
         if (windowOuterX <= turnX) {
             return;
         }
+        if (leadFrame.outward != 1.0 && (sleeved || axialExit || terminalLeadSection(connectingTurn))) {
+            // Each of these reads other copper on the real x (the layer stack a sleeve ends at, the turns an axial
+            // lead passes, a section-local run's own row): not planned in a window whose leads run towards -x.
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                "Real winding: the " + std::string(isEntrance ? "start" : "finish") + " lead of winding '" + windingName +
+                                "' parallel " + std::to_string(parallel) + " is " +
+                                (sleeved ? "sleeved" : axialExit ? "an axial exit" : "local to an axially stacked section") +
+                                " in winding window " + std::to_string(leadFrame.window) +
+                                ", whose leads run towards -x: MKF does not plan that lead there yet");
+        }
+        struct ToRealX {
+            std::vector<ConnectionReservedSpace>& spaces;
+            std::vector<ConnectionRoute>& routes;
+            size_t spacesBefore;
+            size_t routesBefore;
+            double outward;
+            ~ToRealX() {
+                if (outward == 1.0) {
+                    return;
+                }
+                for (size_t i = spacesBefore; i < spaces.size(); ++i) {
+                    spaces[i].coordinates.at(0) = outward * spaces[i].coordinates.at(0);
+                }
+                for (size_t i = routesBefore; i < routes.size(); ++i) {
+                    for (auto& waypoint : routes[i].waypoints) {
+                        waypoint.at(0) = outward * waypoint.at(0);
+                    }
+                }
+            }
+        } toRealX{spaces, routes, spaces.size(), routes.size(), leadFrame.outward};
         // ABT #1336 / #1487: shared by the window-edge stub and the section-local stub.
         // ABT #1336 / #1487: shared by the window-edge stub and the section-local stub.
         // ABT #1336 (Alf, 2026-10-19: the ramp is planned PITCH-TRUE). Whether a stub ramps, and how
@@ -3274,7 +3381,10 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         // The layers the lead routes OVER (outward of the connecting turn) to reach the border.
         std::vector<const Layer*> crossedLayers;
         for (const auto& crossed : allLayers) {
-            double crossedX = crossed.get_coordinates()[0];
+            if (!inLeadWindow(leadFrame, crossed)) {
+                continue;
+            }
+            double crossedX = leadFrame.along(crossed.get_coordinates()[0]);
             // No window clip: a layer OUTSIDE the window is still crossed and still
             // squeezed (see windowOuterX above).
             if (crossedX > turnX + 1e-9 && crossedX < windowOuterX) {
@@ -3456,9 +3566,11 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         // entrance uses (ABT #685's follow-the-direction rule on 14_dab), a winding-only key
         // collapsed all eight runs onto one row, and the secondary's entrance then allocated the
         // row the primary's exit should have occupied — the overlap Alf spotted in the SVG.
+        // The row's occupied span is kept on the real x, where the window's other runs (layer changes) book theirs.
         auto [edgeY, runDepth] = allocateEdgeRow(leadWindowIndex,
                                                  turnAtTop, runHeight,
-                                                 turnX - wireOuterWidth / 2, windowOuterX,
+                                                 std::min(leadFrame.outward * (turnX - wireOuterWidth / 2), leadFrame.outward * windowOuterX),
+                                                 std::max(leadFrame.outward * (turnX - wireOuterWidth / 2), leadFrame.outward * windowOuterX),
                                                  // A one-turn omega winding's entrance and exit
                                                  // are the SAME bundle: its two terminals leave
                                                  // side by side at the same height (Alf,
@@ -3542,7 +3654,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             space.parallel = parallel;
             space.section = crossed->get_section().value_or("");
             space.layer = crossed->get_name();
-            space.coordinates = {crossed->get_coordinates()[0], edgeY};
+            space.coordinates = {leadFrame.along(crossed->get_coordinates()[0]), edgeY};
             // A sleeved run overflowing the margin squeezes the layer by the overflow only.
             space.dimensions = {sleevedRow ? runHeight : wireOuterWidth, sleevedRow ? runDepth : wireOuterHeight};
             // ABT #240: a lead crossing a layer of ANOTHER winding must clear that winding's
@@ -3559,12 +3671,12 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             double interWindingInsulation = 0;
             if (!crossed->get_partial_windings().empty() &&
                 crossed->get_partial_windings()[0].get_winding() != windingName) {
-                double crossedX = crossed->get_coordinates()[0];
+                double crossedX = leadFrame.along(crossed->get_coordinates()[0]);
                 for (const auto& insulationSection : get_sections_by_type(ElectricalType::INSULATION)) {
                     // Sections come back in the REAL frame; turnX/crossedX live in the virtual
                     // frame, which is the x<->y transpose of it for contiguous layers.
                     double insulationX = layersAreContiguous ? insulationSection.get_coordinates()[1]
-                                                             : insulationSection.get_coordinates()[0];
+                                                             : leadFrame.along(insulationSection.get_coordinates()[0]);
                     if (insulationX > turnX && insulationX < crossedX) {
                         interWindingInsulation +=
                             get_insulation_section_thickness(insulationSection.get_name());
@@ -3585,7 +3697,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                     sheetLead && !crossed->get_partial_windings().empty() &&
                     crossed->get_partial_windings()[0].get_winding() == windingName &&
                     crossed->get_section() == connectingTurn.get_section();
-                if (std::abs(crossed->get_coordinates()[0] - stubX) < wireOuterWidth / 2 + crossedHalfWidth &&
+                if (std::abs(leadFrame.along(crossed->get_coordinates()[0]) - stubX) < wireOuterWidth / 2 + crossedHalfWidth &&
                     !sheetLeadStack) {
                     space.edgeDepth = std::max(space.edgeDepth, stubDepth + interWindingInsulation);
                 }
@@ -3944,8 +4056,9 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         {
             std::map<std::pair<size_t, bool>, std::vector<std::pair<const LeadEmission*, double>>> bySide;
             for (const auto& emission : allEmissions) {
+                const LeadFrame emissionFrame = leadFrameOf(emission.turn.get_section().value_or(""));
                 if (emission.axialExit || emission.crossedCount == 0 || terminalLeadSection(emission.turn) ||
-                    windowOuterX <= emission.turn.get_coordinates()[0]) {
+                    emissionFrame.border <= emissionFrame.along(emission.turn.get_coordinates()[0])) {
                     continue;
                 }
                 if (auto face = ownCopperPastEdge(emission.windingName, emission.turn, emission.atTop, emission.wireW)) {

@@ -834,3 +834,62 @@ TEST_CASE("Test_Winding_Studio_Custom_Rect_With_Margins_Autocompletes", "[constr
     CHECK_THAT(margin[0] + primary->get_dimensions()[1] + margin[1], Catch::Matchers::WithinAbs(0.0283, 1e-9));
     CHECK(autocompleted.get_coil().get_layers_description()->size() == 6);
 }
+
+// ABT #2492 (Alf, 2026-11-22, option C): a terminal lead ends at the border of the window its own turns are wound in,
+// measured from the column they wrap. Every lead used to end at window 0's border, so the lead of a winding on the
+// left leg ran across the main column to +15.48 mm (22.5 mm^3 of it inside the ferrite once drawn).
+TEST_CASE("MultiColumnWinding_RealWinding_LeadsEndAtTheirOwnWindowBorder", "[constructive-model][coil][multi-column][abt-2492]") {
+    auto& settings = Settings::GetInstance();
+    settings.set_core_per_column_winding_windows(true);
+    settings.set_coil_use_real_winding_geometry(true);
+    // {Primary's window, Secondary's}: the main column with each leg, and both legs.
+    const std::vector<std::array<int64_t, 2>> placements{{0, 2}, {0, 1}, {1, 2}};
+    for (const auto& placement : placements) {
+        INFO("Primary in window " << placement[0] << ", Secondary in window " << placement[1]);
+        auto core = OpenMagneticsTesting::get_quick_core("E 42/21/20", json::parse("[]"), 1, "Dummy");
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, 0.001, 0.001);
+        json bobbinJson;
+        to_json(bobbinJson, bobbin);
+        json coilJson;
+        coilJson["bobbin"] = bobbinJson;
+        coilJson["functionalDescription"] = json::array(
+            {json{{"name", "Primary"}, {"numberTurns", 20}, {"numberParallels", 1}, {"isolationSide", "primary"}, {"wire", "Round 0.475 - Grade 1"}},
+             json{{"name", "Secondary"}, {"numberTurns", 10}, {"numberParallels", 1}, {"isolationSide", "secondary"}, {"wire", "Round 0.475 - Grade 1"}}});
+        OpenMagnetics::Coil coil(coilJson, false);
+        for (size_t i = 0; i < 2; ++i) {
+            coil.get_mutable_functional_description()[i].set_winding_window(placement[i]);
+        }
+        coil.set_core_columns(core.get_processed_description()->get_columns());
+        coil.set_core_geometry(core);
+        REQUIRE(coil.wind());
+
+        const auto windows = bobbin.get_processed_description()->get_winding_windows();
+        const double wireHalf = coil.resolve_wire(0).get_maximum_outer_width() / 2;
+        const double mainHalf = core.get_processed_description()->get_columns()[0].get_width() / 2;
+        size_t terminals = 0;
+        for (const auto& route : coil.get_connection_layout().routes) {
+            const bool entrance = route.kind == OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE;
+            if (!entrance && route.kind != OpenMagnetics::ConnectionKind::TERMINAL_EXIT) {
+                continue;
+            }
+            ++terminals;
+            const auto window = windows[static_cast<size_t>(placement[route.winding == "Primary" ? 0 : 1])];
+            const double centre = window.get_coordinates().value()[0];
+            const double half = window.get_width().value() / 2;
+            // Outward from the column the turns wrap: away from x = 0 on the main column, towards it on a leg.
+            const bool mainColumn = placement[route.winding == "Primary" ? 0 : 1] == 0;
+            const double outward = mainColumn ? 1.0 : (centre < 0 ? 1.0 : -1.0);
+            const double border = centre + outward * (half + wireHalf);
+            const double end = (entrance ? route.waypoints.front() : route.waypoints.back()).at(0);
+            INFO(route.winding << (entrance ? " entrance" : " exit") << " ends at " << end * 1e3 << " mm, its window's border is " << border * 1e3 << " mm");
+            CHECK_THAT(end, Catch::Matchers::WithinAbs(border, 1e-7));
+            for (const auto& waypoint : route.waypoints) {
+                INFO("waypoint at " << waypoint.at(0) * 1e3 << " mm");
+                CHECK(std::abs(waypoint.at(0)) > mainHalf);
+                CHECK((waypoint.at(0) < 0) == (centre < 0));
+            }
+        }
+        CHECK(terminals == 4);
+    }
+    settings.reset();
+}
