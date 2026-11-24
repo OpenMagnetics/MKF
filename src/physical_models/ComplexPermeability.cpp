@@ -8,6 +8,7 @@
 #include <math.h>
 #include "support/Exceptions.h"
 #include "support/Logger.h"
+#include <optional>
 #include <tuple>
 
 
@@ -444,6 +445,10 @@ std::shared_ptr<const ComplexPermeabilityEstimate> ComplexPermeability::find_or_
         return cached->second;
     }
     std::shared_ptr<const ComplexPermeabilityEstimate> estimate;
+    // ABT #2542: the handler only copies the reason. In the WASM build (-fwasm-exceptions) a handler that wrote the
+    // thread_local refusal map and returned was compiled to 'unreachable', so every material the estimator refuses
+    // trapped in the browser once a sweep left its table; the work is done after the try/catch.
+    std::optional<std::string> refusal;
     try {
         estimate = std::make_shared<const ComplexPermeabilityEstimate>(estimate_complex_permeability(coreMaterial));
     }
@@ -451,7 +456,10 @@ std::shared_ptr<const ComplexPermeabilityEstimate> ComplexPermeability::find_or_
         // Only the estimator's own refusal (unsupported class, too few donors, ...) is recorded; the
         // caller turns it into ComplexPermeabilityEstimateUnavailableException. Anything else (e.g.
         // malformed MAS data) propagates.
-        complexPermeabilityEstimateRefusals.emplace(cacheKey, exception.reason());
+        refusal = exception.reason();
+    }
+    if (refusal) {
+        complexPermeabilityEstimateRefusals.emplace(cacheKey, *refusal);
         return nullptr;
     }
     // One WARNING per material, as the heat-conductivity estimate (ABT #1753).
@@ -535,12 +543,17 @@ ComplexPermeabilityValue ComplexPermeability::get_complex_permeability_with_sour
         }
         auto side = frequency < span.first ? ComplexPermeabilityGapSide::BELOW : ComplexPermeabilityGapSide::ABOVE;
         const auto& gap = estimatePointer->gap(part, side);
+        // ABT #2542: as in find_or_build_estimate, the handler only copies the reason; the decision is made after it.
+        std::optional<std::string> gapRefusal;
         try {
             std::tie(result, source) = gap.evaluate(frequency);
         }
         catch (const ComplexPermeabilityEstimatorRefusal& exception) {
-            if (!extrapolationAllowed(exception.reason())) {
-                throw ComplexPermeabilityEstimateUnavailableException(materialName, frequency, minimumFrequency, maximumFrequency, exception.reason());
+            gapRefusal = exception.reason();
+        }
+        if (gapRefusal) {
+            if (!extrapolationAllowed(*gapRefusal)) {
+                throw ComplexPermeabilityEstimateUnavailableException(materialName, frequency, minimumFrequency, maximumFrequency, *gapRefusal);
             }
             holdAtNearestTabulated();
             return;
