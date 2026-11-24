@@ -280,6 +280,24 @@ static std::optional<CoreMaterial> resolve_drum_ring_ring_material(Core& core) {
     return materials[1];
 }
 
+bool MagnetizingInductance::is_priced_by_family_model(Core core) {
+    auto family = core.get_shape_family();
+    if (family == CoreShapeFamily::DRUM || family == CoreShapeFamily::ROD || family == CoreShapeFamily::DRUM_SEMISHIELDED) {
+        return true;
+    }
+    if (family == CoreShapeFamily::DRUM_RING) {
+        return resolve_drum_ring_ring_material(core).has_value();
+    }
+    if (family == CoreShapeFamily::MOLDED) {
+        return core.resolve_region_materials().size() > 1;
+    }
+    return false;
+}
+
+double MagnetizingInductance::get_flux_density_reference_area(Core core) {
+    return is_priced_by_family_model(core) ? core.get_columns()[0].get_area() : core.get_effective_area();
+}
+
 // Sectioned reluctance for a two-grade shielded drum: the drum sections take the drum's mu, the
 // ring sections take the ring's mu, and the two STRUCTURAL annular clearances (ABT #366/#368,
 // synthesised by Core::process_gap from A/K/D/F) are added on top exactly as before. Those
@@ -748,7 +766,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
         // Flux crosses the post: the drum's own central column carries it.
         semishieldedResult.second = calculate_flux_density_for_family_model(
             semishieldedInductance, numberTurnsSemishielded,
-            core.get_columns()[0].get_area(), operatingPoint);
+            get_flux_density_reference_area(core), operatingPoint);
         return semishieldedResult;
     }
 
@@ -776,7 +794,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
             // Flux crosses the post, same as every other drum-family model here.
             drumRingResult.second = calculate_flux_density_for_family_model(
                 drumRingInductance, numberTurnsDrumRing,
-                core.get_columns()[0].get_area(), operatingPoint);
+                get_flux_density_reference_area(core), operatingPoint);
             return drumRingResult;
         }
     }
@@ -811,7 +829,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
         moldedResult.first = moldedOutput;
         // Flux crosses the post, the region with the smallest section.
         moldedResult.second = calculate_flux_density_for_family_model(
-            moldedInductance, numberTurnsMolded, core.get_columns()[0].get_area(), operatingPoint);
+            moldedInductance, numberTurnsMolded, get_flux_density_reference_area(core), operatingPoint);
         return moldedResult;
     }
 
@@ -842,7 +860,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
         rodResult.first = rodOutput;
         // Flux crosses the rod itself (the bore is already subtracted from its column area).
         rodResult.second = calculate_flux_density_for_family_model(
-            rodInductance, numberTurnsRod, core.get_columns()[0].get_area(), operatingPoint);
+            rodInductance, numberTurnsRod, get_flux_density_reference_area(core), operatingPoint);
         return rodResult;
     }
 
@@ -867,7 +885,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
         // Flux crosses the drum post (the bore is already subtracted from its column area).
         openCoreResult.second = calculate_flux_density_for_family_model(
             openCoreInductance, numberTurnsOpenCore,
-            core.get_columns()[0].get_area(), operatingPoint);
+            get_flux_density_reference_area(core), operatingPoint);
         return openCoreResult;
     }
 

@@ -14,6 +14,7 @@
 #include "physical_models/Reluctance.h"
 #include "physical_models/MagneticField.h"
 #include "physical_models/MagnetizingInductance.h"
+#include "physical_models/CoreMagneticFluxDensity.h"
 #include "support/Exceptions.h"
 #include "support/Logger.h"
 
@@ -921,7 +922,70 @@ std::optional<double> CoreLosses::get_temperature_factor_data_end(Core core, con
     return dataEnd;
 }
 
+CoreLossesOutput CoreLosses::calculate_distributed_core_losses(const Core& core, const OperatingPointExcitation& excitation, double temperature) {
+    const auto& fluxDensity = excitation.get_magnetic_flux_density();
+    if (!fluxDensity || !fluxDensity->get_waveform() || !fluxDensity->get_waveform()->get_time()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Distributed core losses need the excitation's sampled flux density waveform B(t)");
+    }
+    const double frequency = excitation.get_frequency();
+    // The map depends on the core (shape, material, stacks) and on the temperature and frequency its magnetisation curve
+    // is read at, not on the excitation: the last few are kept, so the thermal loop and the cycles of a line-frequency
+    // record do not rebuild it.
+    json functionalDescription;
+    to_json(functionalDescription, core.get_functional_description());
+    std::string key = functionalDescription.dump();
+    struct CachedMap {
+        std::string key;
+        double temperature;
+        double frequency;
+        std::shared_ptr<const CoreMagneticFluxDensity> map;
+    };
+    thread_local std::vector<CachedMap> cachedMaps;
+    std::shared_ptr<const CoreMagneticFluxDensity> map;
+    for (auto cached = cachedMaps.begin(); cached != cachedMaps.end(); ++cached) {
+        if (cached->temperature == temperature && cached->frequency == frequency && cached->key == key) {
+            map = cached->map;
+            std::rotate(cachedMaps.begin(), cached, cached + 1);
+            break;
+        }
+    }
+    if (!map) {
+        map = std::make_shared<const CoreMagneticFluxDensity>(core, temperature, frequency);
+        const size_t maximumCachedMaps = 4;
+        if (cachedMaps.size() == maximumCachedMaps) {
+            cachedMaps.pop_back();
+        }
+        cachedMaps.insert(cachedMaps.begin(), CachedMap{std::move(key), temperature, frequency, map});
+    }
+    auto waveform = CoreMagneticFluxDensity::calculate_waveform(*map, core, fluxDensity->get_waveform().value(), frequency);
+    auto lossMap = CoreMagneticFluxDensity::calculate_core_losses(waveform);
+
+    if (!std::isfinite(lossMap.coreLosses)) {
+        throw InvalidInputException(ErrorCode::CALCULATION_NAN_RESULT, "Distributed core losses produced a non-finite result (" +
+                                    std::to_string(lossMap.coreLosses) + ") for material '" + core.get_material_name() +
+                                    "' at temperature " + std::to_string(temperature) + " C");
+    }
+    CoreLossesOutput coreLossesOutput;
+    coreLossesOutput.set_core_losses(lossMap.coreLosses);
+    coreLossesOutput.set_volumetric_losses(lossMap.coreLosses / lossMap.volume);
+    coreLossesOutput.set_temperature(temperature);
+    coreLossesOutput.set_origin(ResultOrigin::SIMULATION);
+    std::string methodUsed = "DistributedFluxDensityMap";
+    if (!lossMap.unpricedMaterials.empty()) {
+        methodUsed += "(lossesAssumedZero:";
+        for (size_t index = 0; index < lossMap.unpricedMaterials.size(); ++index) {
+            methodUsed += (index ? "," : "") + lossMap.unpricedMaterials[index];
+        }
+        methodUsed += ")";
+    }
+    coreLossesOutput.set_method_used(methodUsed);
+    return coreLossesOutput;
+}
+
 CoreLossesOutput CoreLosses::calculate_periodic_core_losses(const Core& core, const OperatingPointExcitation& excitation, double temperature) {
+    if (Settings::GetInstance().get_core_losses_flux_density_distribution() == CoreLossesFluxDensityDistribution::DISTRIBUTED) {
+        return calculate_distributed_core_losses(core, excitation, temperature);
+    }
     // Mixed-material circuit: price each material over its own volume (ABT #362).
     if (core.get_shape_family() == CoreShapeFamily::DRUM_SEMISHIELDED) {
         return calculate_semishielded_core_losses(core, excitation, temperature);

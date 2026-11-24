@@ -2403,7 +2403,9 @@ void Painter::paint_core_flux_density(Magnetic magnetic, OperatingPoint operatin
     // winding windows are per column or the real winding is drawn: the map's cells are that +x half, mirrored here.
     auto family = core.get_shape_family();
     bool toroid = family == CoreShapeFamily::T;
-    bool mirror = !toroid && family != CoreShapeFamily::U &&
+    const bool drawnWhole = family == CoreShapeFamily::U || family == CoreShapeFamily::UR || family == CoreShapeFamily::UT ||
+                            family == CoreShapeFamily::C || family == CoreShapeFamily::UI || family == CoreShapeFamily::DRUM_PLATE;
+    bool mirror = !toroid && !drawnWhole &&
                   (core.get_processed_description()->get_winding_windows().size() > 1 || settings.get_coil_use_real_winding_geometry());
 
     auto group = _root.add_child<SVG::Group>();

@@ -13,6 +13,13 @@ enum class EffectiveParameterStandard {
     IEC_63182    // Simplified geometric method (powder-core convention)
 };
 
+// The flux density the core losses are priced from (CoreLosses::calculate_core_losses, and so simulate, its thermal
+// loop and the advisers' loss filters).
+enum class CoreLossesFluxDensityDistribution {
+    EFFECTIVE_PARAMETERS,  // Default -- one B(t) over the core's effective area, priced over its effective volume
+    DISTRIBUTED            // The core's flux density map (CoreMagneticFluxDensity): every cell's own B(t) over its own volume
+};
+
 enum class GappingOptimizationStrategy {
     SIMPLE,         // Pick gap closest to min that avoids saturation
     GOLDEN_SECTION  // Optimize for minimum core losses using golden-section search
@@ -313,6 +320,8 @@ class Settings
         // from its B_dc/B_sat(T); 1 for other ferrites without a curve and for non-ferrites. FALSE: F = 1 for
         // every material (the DC bias does not change the core losses). Keep in sync with reset().
         bool _coreLossesDcBiasEnabled = true;
+        // How the core losses read the core's flux density (see CoreLossesFluxDensityDistribution). Keep in sync with reset().
+        CoreLossesFluxDensityDistribution _coreLossesFluxDensityDistribution = CoreLossesFluxDensityDistribution::EFFECTIVE_PARAMETERS;
 
         // Centralized model configuration
         MagneticFieldStrengthModels _magneticFieldStrengthModel;
@@ -692,6 +701,10 @@ class Settings
         // See _coreLossesDcBiasEnabled.
         bool   get_core_losses_dc_bias_enabled() const;
         void   set_core_losses_dc_bias_enabled(bool value);
+
+        // See _coreLossesFluxDensityDistribution.
+        CoreLossesFluxDensityDistribution get_core_losses_flux_density_distribution() const;
+        void set_core_losses_flux_density_distribution(CoreLossesFluxDensityDistribution value);
 
         GappingOptimizationStrategy get_gapping_strategy() const;
         void set_gapping_strategy(GappingOptimizationStrategy value);

@@ -170,6 +170,12 @@ class MagnetizingInductance {
     // (ABT #331); routed automatically for CoreShapeFamily::DRUM. Throws on gapped cores and on
     // missing drum dimensions.
     static double calculate_open_core_magnetizing_inductance(Core core, double numberTurns, double temperature);
+    // The area the flux density calculate_inductance_and_magnetic_flux_density returns is over, so that B times it is the
+    // wound column's flux: the post's for the cores a family model prices (drums, rods, semi-shielded drums, a drum ring
+    // whose ring is its own grade, a moulded body of more than one grade), the effective area for every other core. The
+    // routing in calculate_inductance_and_magnetic_flux_density reads this same function.
+    static double get_flux_density_reference_area(Core core);
+    static bool is_priced_by_family_model(Core core);
 
         // Rod (bare cylinder) magnetizing inductance via the same demagnetising-factor bracket
         // (ABT #933); routed automatically for CoreShapeFamily::ROD. Unlike a drum, a rod has no

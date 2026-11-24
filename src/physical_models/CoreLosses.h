@@ -903,6 +903,11 @@ class CoreLosses {
     // being split again (the models' compute_* evaluations, then the DC-bias correction).
     CoreLossesOutput calculate_periodic_core_losses(const Core& core, const OperatingPointExcitation& excitation, double temperature);
     double get_periodic_core_volumetric_losses(const CoreMaterial& coreMaterial, const OperatingPointExcitation& excitation, double temperature);
+    // Settings coreLossesFluxDensityDistribution DISTRIBUTED: the core's flux density map (CoreMagneticFluxDensity) spreads
+    // the excitation's B(t) (read over MagnetizingInductance::get_flux_density_reference_area) over the core, and every
+    // cell's own B(t) is priced by get_periodic_core_volumetric_losses over the cell's volume. Throws for a core the map
+    // does not cover and for an excitation without a sampled flux density waveform.
+    CoreLossesOutput calculate_distributed_core_losses(const Core& core, const OperatingPointExcitation& excitation, double temperature);
 };
 
 } // namespace OpenMagnetics

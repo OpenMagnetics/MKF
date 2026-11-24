@@ -2,6 +2,7 @@
 #include "physical_models/MagnetizingInductance.h"
 #include "physical_models/CoreLosses.h"
 #include "processors/Inputs.h"
+#include "processors/MagneticSimulator.h"
 #include "support/Exceptions.h"
 #include "support/Settings.h"
 #include "TestingUtils.h"
@@ -278,5 +279,155 @@ TEST_CASE("Core loss map of a toroid costs more than its mean flux density unifo
     // The density falls ring by ring from the bore out (the rings are built from the inner radius outwards).
     for (size_t ring = 1; ring < lossMap.volumetricLosses.size(); ++ring) {
         CHECK(lossMap.volumetricLosses[ring] < lossMap.volumetricLosses[ring - 1]);
+    }
+}
+
+TEST_CASE("Distributed core-loss setting prices the core losses from the flux density map", "[physical-model][core-flux-density][smoke-test]") {
+    // Settings are global: put them back however the test ends.
+    struct ResetSettings {
+        ~ResetSettings() { Settings::GetInstance().reset(); }
+    } resetSettings;
+    Settings::GetInstance().reset();
+    CHECK(Settings::GetInstance().get_core_losses_flux_density_distribution() == CoreLossesFluxDensityDistribution::EFFECTIVE_PARAMETERS);
+
+    auto magnetic = magnetic_with_core("E 42/21/20", OpenMagneticsTesting::get_ground_gap(0.001));
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(100000, 100e-6, 25, WaveformLabel::TRIANGULAR, 4, 0.5, 5);
+    auto operatingPoint = inputs.get_operating_point(0);
+    MagnetizingInductance magnetizingInductanceModel;
+    auto fluxDensity = magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(magnetic, &operatingPoint).second;
+    auto excitation = operatingPoint.get_excitations_per_winding()[0];
+    excitation.set_magnetic_flux_density(fluxDensity);
+    auto core = magnetic.get_core();
+    const double temperature = 60;
+
+    CoreLosses coreLosses;
+    auto effective = coreLosses.calculate_core_losses(core, excitation, temperature);
+    CHECK(effective.get_method_used() != "DistributedFluxDensityMap");
+
+    // DISTRIBUTED: the same entry point returns the loss map's total, built here on its own from the same B(t).
+    Settings::GetInstance().set_core_losses_flux_density_distribution(CoreLossesFluxDensityDistribution::DISTRIBUTED);
+    auto distributed = coreLosses.calculate_core_losses(core, excitation, temperature);
+    CHECK(distributed.get_method_used() == "DistributedFluxDensityMap");
+    CoreMagneticFluxDensity map(core, temperature, excitation.get_frequency());
+    auto waveform = CoreMagneticFluxDensity::calculate_waveform(map, core, fluxDensity.get_waveform().value(), excitation.get_frequency());
+    auto lossMap = CoreMagneticFluxDensity::calculate_core_losses(waveform);
+    CHECK_THAT(distributed.get_core_losses(), Catch::Matchers::WithinRel(lossMap.coreLosses, 1e-12));
+    CHECK_THAT(distributed.get_volumetric_losses().value(), Catch::Matchers::WithinRel(lossMap.coreLosses / lossMap.volume, 1e-12));
+    // A second call reads the cached map: the same number.
+    CHECK(coreLosses.calculate_core_losses(core, excitation, temperature).get_core_losses() == distributed.get_core_losses());
+    // The map prices the same B(t) where it actually is: the same order as the effective-parameter losses, not equal.
+    CHECK(distributed.get_core_losses() != effective.get_core_losses());
+    CHECK_THAT(distributed.get_core_losses(), Catch::Matchers::WithinRel(effective.get_core_losses(), 0.5));
+
+    // simulate (and its thermal loop) goes through it too.
+    MagneticSimulator simulator;
+    auto mas = simulator.simulate(inputs, magnetic);
+    CHECK(mas.get_outputs()[0].get_core_losses().value().get_method_used() == "DistributedFluxDensityMap");
+
+    Settings::GetInstance().reset();
+    CHECK(Settings::GetInstance().get_core_losses_flux_density_distribution() == CoreLossesFluxDensityDistribution::EFFECTIVE_PARAMETERS);
+}
+
+namespace {
+
+// A sinusoidal flux density excitation of amplitude peak, read over the core's reference area, one period sampled.
+OperatingPointExcitation sinusoidal_flux_density_excitation(double peak, double frequency) {
+    std::vector<double> time, data;
+    for (size_t sample = 0; sample <= 64; ++sample) {
+        double phase = static_cast<double>(sample) / 64;
+        time.push_back(phase / frequency);
+        data.push_back(peak * std::sin(2 * std::numbers::pi * phase));
+    }
+    Waveform waveform;
+    waveform.set_time(time);
+    waveform.set_data(data);
+    SignalDescriptor fluxDensity;
+    fluxDensity.set_waveform(waveform);
+    fluxDensity.set_harmonics(OpenMagnetics::Inputs::calculate_harmonics_data(waveform, frequency));
+    fluxDensity.set_processed(OpenMagnetics::Inputs::calculate_processed_data(fluxDensity, waveform, false));
+    OperatingPointExcitation excitation;
+    excitation.set_frequency(frequency);
+    excitation.set_magnetic_flux_density(fluxDensity);
+    return excitation;
+}
+
+Core processed_core(json functionalDescription) {
+    json coreJson;
+    coreJson["functionalDescription"] = functionalDescription;
+    Core core(coreJson);
+    core.process_data();
+    core.process_gap();
+    return core;
+}
+
+}  // namespace
+
+TEST_CASE("Core flux density map covers every closed and drum family, and prices their losses", "[physical-model][core-flux-density][smoke-test]") {
+    struct ResetSettings {
+        ~ResetSettings() { Settings::GetInstance().reset(); }
+    } resetSettings;
+    Settings::GetInstance().reset();
+    const double frequency = 100000;
+    const double temperature = 25;
+    auto excitation = sinusoidal_flux_density_excitation(0.05, frequency);
+
+    std::vector<std::pair<std::string, Core>> cores;
+    // Round and irregular posts (the plate depth calibrated to MKF's le / Ae), a piece and plate of each kind, a drum.
+    for (std::string shape : {"ETD 29/16/10", "PQ 32/20", "RM 8", "P 18/11", "EP 13", "ET 20", "UT 20", "DRH-14X20-4C"}) {
+        cores.emplace_back(shape, OpenMagneticsTesting::get_quick_core(shape, json::array(), 1, "3C90"));
+    }
+    // A shielded drum, its ring of the core's own grade.
+    cores.emplace_back("DR 2.3 + SRI 3.0", OpenMagneticsTesting::get_quick_core("DR 2.3 + SRI 3.0", json::array(), 1, "3C90"));
+    // A semi-shielded drum, its shell of magnetic epoxy (the core geometry test's design).
+    json semishieldedShape = {
+        {"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "drumSemishielded"},
+        {"aliases", json::array()}, {"name", "LQS-like 4018"},
+        {"dimensions", {
+            {"A", {{"nominal", 0.0038}}}, {"B", {{"nominal", 0.0018}}}, {"C", {{"nominal", 0.0015}}},
+            {"D", {{"nominal", 0.0004}}}, {"E", {{"nominal", 0.0010}}}, {"F", {{"nominal", 0.0004}}},
+            {"J", {{"nominal", 0.0040}}}, {"K", {{"nominal", 0.0040}}}, {"L", {{"nominal", 0.0018}}}}}};
+    cores.emplace_back("semi-shielded drum", processed_core({
+        {"type", "pieceAndPlate"}, {"material", "3C90"}, {"shape", semishieldedShape},
+        {"gapping", json::array()}, {"numberStacks", 1},
+        {"coating", {{"type", "magneticEpoxy"}, {"thickness", {{"nominal", 0.0001}}}, {"material", "Kool Mµ 26"}}}}));
+    // A moulded body of two powders (the per-region inductance test's design).
+    json moldedShape = {
+        {"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "molded"},
+        {"aliases", json::array()}, {"name", "MAPI-like 4020"},
+        {"dimensions", {
+            {"A", {{"nominal", 0.0041}}}, {"B", {{"nominal", 0.0021}}}, {"C", {{"nominal", 0.0041}}},
+            {"D", {{"nominal", 0.0014}}}, {"E", {{"nominal", 0.0030}}}, {"F", {{"nominal", 0.0012}}}}}};
+    cores.emplace_back("moulded body", processed_core({
+        {"type", "closedShape"}, {"material", json::array({"Kool Mµ 60", "Kool Mµ 26"})}, {"shape", moldedShape},
+        {"gapping", json::array()}, {"numberStacks", 1}}));
+
+    for (auto& [name, core] : cores) {
+        INFO(name);
+        CoreMagneticFluxDensity map(core, temperature, frequency);
+        REQUIRE(!map.get_cells().empty());
+        const auto family = core.get_shape_family();
+        const bool calibrated = family == CoreShapeFamily::ETD || family == CoreShapeFamily::PQ || family == CoreShapeFamily::RM ||
+                                family == CoreShapeFamily::P || family == CoreShapeFamily::EP;
+        if (calibrated) {
+            // Round or irregular posts: the linear map has MKF's own reluctance, le / (mu0 mu Ae).
+            auto instant = map.calculate_flux_densities(1e-12);
+            double magnetomotiveForce = 0;
+            for (double regionMagnetomotiveForce : instant.regionMagnetomotiveForces) {
+                magnetomotiveForce += regionMagnetomotiveForce;
+            }
+            double mu = initial_relative_permeability(map) * constants.vacuumPermeability;
+            CHECK_THAT(magnetomotiveForce * mu / 1e-12, Catch::Matchers::WithinRel(core.get_effective_length() / core.get_effective_area(), 1e-6));
+        }
+        if (name == "semi-shielded drum" || name == "moulded body") {
+            CHECK(map.get_materials().size() == 2);
+        }
+
+        CoreLosses coreLosses;
+        Settings::GetInstance().set_core_losses_flux_density_distribution(CoreLossesFluxDensityDistribution::DISTRIBUTED);
+        auto distributed = coreLosses.calculate_core_losses(core, excitation, temperature);
+        Settings::GetInstance().set_core_losses_flux_density_distribution(CoreLossesFluxDensityDistribution::EFFECTIVE_PARAMETERS);
+        CHECK(distributed.get_method_used().starts_with("DistributedFluxDensityMap"));
+        CHECK(std::isfinite(distributed.get_core_losses()));
+        CHECK(distributed.get_core_losses() > 0);
     }
 }

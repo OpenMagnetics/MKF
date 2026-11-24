@@ -6,6 +6,7 @@
 #include "physical_models/ComplexPermeability.h"
 #include "physical_models/Temperature.h"
 #include "physical_models/InitialPermeability.h"
+#include "physical_models/ReluctanceNetwork.h"
 #include "support/Settings.h"
 #include <MAS.hpp>
 #include "support/Exceptions.h"
@@ -278,6 +279,13 @@ CoreLossesOutput MagneticSimulator::calculate_core_losses(OperatingPoint& operat
                                         "', whose coil has no turns: wind it first");
     }
     rebuild_layers_if_missing(magnetic);
+    // The distributed core losses drive the flux through the main column (CoreMagneticFluxDensity): a winding elsewhere
+    // would put the map's flux in the wrong column.
+    if (Settings::GetInstance().get_core_losses_flux_density_distribution() == CoreLossesFluxDensityDistribution::DISTRIBUTED &&
+        ReluctanceNetwork::has_non_main_placement(magnetic)) {
+        throw NotImplementedException("Distributed core losses: a winding placed on a column other than the main one is not covered "
+                                      "yet; the core's flux density map drives the flux through the main column");
+    }
 
     _lastDcBiasPoint.reset();
     _lastLowestFixedPointSearchEvaluations = 0;

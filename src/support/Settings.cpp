@@ -215,6 +215,7 @@ namespace {
         add_to_fingerprint(text, _coreLossesModelNames);
         add_to_fingerprint(text, _coreLossesRequestedModel);
         add_to_fingerprint(text, _coreLossesDcBiasEnabled);
+        add_to_fingerprint(text, _coreLossesFluxDensityDistribution);
         add_to_fingerprint(text, _magneticFieldStrengthModel);
         add_to_fingerprint(text, _magneticFieldStrengthFringingEffectModel);
         add_to_fingerprint(text, _leakageInductanceMagneticFieldStrengthModel);
@@ -407,6 +408,7 @@ namespace {
         _coreLossesModelNames = {Defaults().coreLossesModelDefault, CoreLossesModels::PROPRIETARY, CoreLossesModels::LOSS_FACTOR, CoreLossesModels::LOSS_FACTOR_HYSTERESIS, CoreLossesModels::STEINMETZ, CoreLossesModels::ROSHEN};
         _coreLossesRequestedModel = std::nullopt;
         _coreLossesDcBiasEnabled = true;
+        _coreLossesFluxDensityDistribution = CoreLossesFluxDensityDistribution::EFFECTIVE_PARAMETERS;
         _circuitSimulatorCurveFittingMode = 0;
         _circuitSimulatorFracpoleOptions = std::nullopt;
         _circuitSimulatorIncludeSaturation = false;
@@ -1275,6 +1277,13 @@ namespace {
     }
     void Settings::set_core_losses_dc_bias_enabled(bool value) {
         _coreLossesDcBiasEnabled = value;
+    }
+
+    CoreLossesFluxDensityDistribution Settings::get_core_losses_flux_density_distribution() const {
+        return _coreLossesFluxDensityDistribution;
+    }
+    void Settings::set_core_losses_flux_density_distribution(CoreLossesFluxDensityDistribution value) {
+        _coreLossesFluxDensityDistribution = value;
     }
 
     GappingOptimizationStrategy Settings::get_gapping_strategy() const {
