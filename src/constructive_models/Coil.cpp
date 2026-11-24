@@ -5829,36 +5829,82 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                             }
                         };
                         const std::string wrapName = ownEntrance ? "re-sloped first wrap (row start)" : "re-sloped last wrap (row end)";
-                        auto own_wrap_to_segment = [&](const P3& a, const P3& b) {
-                            double best = std::numeric_limits<double>::max();
-                            for (const auto& h : ownWrap.helices) {
-                                best = std::min(best, row_end_helix_distance(h, [&](const P3& p, const P3& q) { return row_end_segment_distance(p, q, a, b); },
-                                                                             tolerance));
-                            }
-                            for (const auto& [p, q] : ownWrap.risers) {
-                                best = std::min(best, row_end_segment_distance(p, q, a, b));
-                            }
-                            return best;
+                        // ABT #2489: a clearance is read only below `judgedWithin` (the report's reach; a finding needs it
+                        // negative), and the exact distance of a helix piece is a branch and bound to `tolerance`. A piece that a
+                        // rigorous floor on the distance already puts past that reach is not measured: the floor is the gap
+                        // between the two pieces' heights and, in plan, between their radii about the helix's axis. On a column
+                        // of 166 turns the exact judge of every wrap against every lead took 2.1 s a layout, 98 layouts a wind
+                        // (single_switch_forward_transformer_complete: 210 s of a 225 s autocomplete).
+                        const double judgedWithin = 0.5e-3;
+                        auto helix_heights = [](const RowEndHelix& h) {
+                            const double yB = h.yA + h.k * (h.phiB - h.phiA);
+                            return std::make_pair(std::min(h.yA, yB), std::max(h.yA, yB));
                         };
+                        auto apart = [](double lo1, double hi1, double lo2, double hi2) { return std::max({0.0, lo1 - hi2, lo2 - hi1}); };
+                        auto helix_helix_floor = [&](const RowEndHelix& h1, const RowEndHelix& h2) {
+                            const auto [lo1, hi1] = helix_heights(h1);
+                            const auto [lo2, hi2] = helix_heights(h2);
+                            // In plan each lies on its circle about (0, centreD): no closer than their radii differ, less the
+                            // distance between the two centres.
+                            const double radial = std::max(0.0, std::abs(h1.radius - h2.radius) - std::abs(h1.centreD - h2.centreD));
+                            return std::hypot(apart(lo1, hi1, lo2, hi2), radial);
+                        };
+                        auto helix_segment_floor = [&](const RowEndHelix& h, const P3& a, const P3& b) {
+                            const auto [lo, hi] = helix_heights(h);
+                            // The segment's plan distance from the helix's axis: least at the foot of the axis on it, greatest
+                            // at an end.
+                            const double ax = a[0], ad = a[2] - h.centreD, bx = b[0], bd = b[2] - h.centreD;
+                            const double ux = bx - ax, ud = bd - ad, uu = ux * ux + ud * ud;
+                            const double t = uu > 0 ? std::clamp(-(ax * ux + ad * ud) / uu, 0.0, 1.0) : 0.0;
+                            const double least = std::hypot(ax + t * ux, ad + t * ud);
+                            const double greatest = std::max(std::hypot(ax, ad), std::hypot(bx, bd));
+                            const double radial = std::max({0.0, least - h.radius, h.radius - greatest});
+                            return std::hypot(apart(lo, hi, std::min(a[1], b[1]), std::max(a[1], b[1])), radial);
+                        };
+                        // The reach of a pair, centreline to centreline; `tolerance` keeps the floor's own rounding out of it. The
+                        // clearances themselves are formed exactly as before (distance less one half, less the other).
+                        auto past = [&](double floor, double halves) { return floor >= judgedWithin + halves + tolerance; };
                         for (const auto& piece : pieces) {
+                            const double wrapHalves = ownTurnHalf + piece.half;
+                            const double runHalves = ownRunHalf + piece.half;
+                            double toOwnWrap = std::numeric_limits<double>::max();
                             if (piece.helix) {
-                                double toOwnWrap = std::numeric_limits<double>::max();
+                                const auto& other = piece.helix.value();
                                 for (const auto& h : ownWrap.helices) {
-                                    toOwnWrap = std::min(toOwnWrap, row_end_helix_helix_distance(h, piece.helix.value(), tolerance));
+                                    if (!past(helix_helix_floor(h, other), wrapHalves)) {
+                                        toOwnWrap = std::min(toOwnWrap, row_end_helix_helix_distance(h, other, tolerance));
+                                    }
                                 }
                                 for (const auto& [p, q] : ownWrap.risers) {
-                                    toOwnWrap = std::min(toOwnWrap, row_end_helix_distance(piece.helix.value(), [&](const P3& a, const P3& b) {
-                                        return row_end_segment_distance(a, b, p, q); }, tolerance));
+                                    if (!past(helix_segment_floor(other, p, q), wrapHalves)) {
+                                        toOwnWrap = std::min(toOwnWrap, row_end_helix_distance(other, [&](const P3& a, const P3& b) {
+                                            return row_end_segment_distance(a, b, p, q); }, tolerance));
+                                    }
                                 }
-                                recordRound(wrapName, piece.name, toOwnWrap - ownTurnHalf - piece.half);
+                                if (toOwnWrap < std::numeric_limits<double>::max()) {
+                                    recordRound(wrapName, piece.name, toOwnWrap - ownTurnHalf - piece.half);
+                                }
                                 for (const auto& [a, b] : ownRun) {
-                                    recordRound("run at the lane", piece.name,
-                                                row_end_helix_distance(piece.helix.value(), [&](const P3& p, const P3& q) {
-                                                    return row_end_segment_distance(p, q, a, b); }, tolerance) - ownRunHalf - piece.half);
+                                    if (!past(helix_segment_floor(other, a, b), runHalves)) {
+                                        recordRound("run at the lane", piece.name,
+                                                    row_end_helix_distance(other, [&](const P3& p, const P3& q) {
+                                                        return row_end_segment_distance(p, q, a, b); }, tolerance) - ownRunHalf - piece.half);
+                                    }
                                 }
                                 continue;
                             }
-                            recordRound(wrapName, piece.name, own_wrap_to_segment(piece.a, piece.b) - ownTurnHalf - piece.half);
+                            for (const auto& h : ownWrap.helices) {
+                                if (!past(helix_segment_floor(h, piece.a, piece.b), wrapHalves)) {
+                                    toOwnWrap = std::min(toOwnWrap, row_end_helix_distance(h, [&](const P3& p, const P3& q) {
+                                        return row_end_segment_distance(p, q, piece.a, piece.b); }, tolerance));
+                                }
+                            }
+                            for (const auto& [p, q] : ownWrap.risers) {
+                                toOwnWrap = std::min(toOwnWrap, row_end_segment_distance(p, q, piece.a, piece.b));
+                            }
+                            if (toOwnWrap < std::numeric_limits<double>::max()) {
+                                recordRound(wrapName, piece.name, toOwnWrap - ownTurnHalf - piece.half);
+                            }
                             for (const auto& [a, b] : ownRun) {
                                 recordRound("run at the lane", piece.name, row_end_segment_distance(a, b, piece.a, piece.b) - ownRunHalf - piece.half);
                             }
@@ -5868,7 +5914,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                                << " at lane x = " << lane * 1e3 << " mm on row " << row * 1e3 << " mm, wrap radius " << ownRadius * 1e3
                                << " mm, meets its helix at " << route.rowEndFromHeight.value() * 1e3 << " mm; " << pieces.size() << " pieces judged";
                         for (const auto& [k, clearance] : worstRound) {
-                            if (clearance < 0.5e-3) {
+                            if (clearance < judgedWithin) {
                                 report << "\n    " << k.first << " vs " << k.second << ": " << (clearance < -contact ? "INTO by " : "clear by ")
                                        << std::abs(clearance) * 1e3 << " mm";
                             }
