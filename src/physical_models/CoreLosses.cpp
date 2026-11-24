@@ -24,6 +24,7 @@
 #include <map>
 #include <mutex>
 #include <set>
+#include <span>
 #include <cfloat>
 #include <complex>
 #include <cstdlib>
@@ -350,13 +351,19 @@ std::vector<DcBiasPermeabilityCurve> get_dc_bias_permeability_curves(const CoreM
     if (!data) {
         return curves;
     }
-    std::vector<PermeabilityPoint> points;
+    // The points are read in place (a single point is a one-element span), not copied.
+    const PermeabilityPoint* firstPoint;
+    size_t numberPoints;
     if (std::holds_alternative<PermeabilityPoint>(data.value())) {
-        points.push_back(std::get<PermeabilityPoint>(data.value()));
+        firstPoint = &std::get<PermeabilityPoint>(data.value());
+        numberPoints = 1;
     }
     else {
-        points = std::get<std::vector<PermeabilityPoint>>(data.value());
+        const auto& pointList = std::get<std::vector<PermeabilityPoint>>(data.value());
+        firstPoint = pointList.data();
+        numberPoints = pointList.size();
     }
+    std::span<const PermeabilityPoint> points(firstPoint, numberPoints);
     auto malformed = [&](const std::string& what) {
         return MaterialException(ErrorCode::MATERIAL_INVALID_PROPERTY,
             "Material " + material.get_name() + ": its " + field + " permeability versus DC field strength " + what +
@@ -365,6 +372,9 @@ std::vector<DcBiasPermeabilityCurve> get_dc_bias_permeability_curves(const CoreM
     std::map<double, std::vector<std::pair<double, double>>> byTemperature;
     std::vector<std::pair<double, double>> withoutTemperature;
     std::set<std::string> frequencies;
+    // Frequencies are told apart by their formatted text, as before; each distinct raw value is formatted once.
+    std::set<double> formattedFrequencies;
+    bool pointWithoutFrequency = false;
     for (const auto& point : points) {
         if (!point.get_magnetic_field_dc_bias()) {
             continue;
@@ -374,7 +384,15 @@ std::vector<DcBiasPermeabilityCurve> get_dc_bias_permeability_curves(const CoreM
         if (!std::isfinite(fieldStrength) || fieldStrength < 0 || !std::isfinite(permeability) || !(permeability > 0)) {
             throw malformed("has a point of " + format_significant(permeability) + " at " + format_significant(fieldStrength) + " A/m");
         }
-        frequencies.insert(point.get_frequency() ? format_significant(point.get_frequency().value()) : std::string("none"));
+        if (point.get_frequency()) {
+            if (formattedFrequencies.insert(point.get_frequency().value()).second) {
+                frequencies.insert(format_significant(point.get_frequency().value()));
+            }
+        }
+        else if (!pointWithoutFrequency) {
+            pointWithoutFrequency = true;
+            frequencies.insert(std::string("none"));
+        }
         if (point.get_temperature()) {
             byTemperature[point.get_temperature().value()].emplace_back(fieldStrength, permeability);
         }
@@ -2319,6 +2337,20 @@ double CoreLossesIGSEModel::get_ki(SteinmetzCoreLossesMethodRangeDatum steinmetz
     double alpha = steinmetzDatum.get_alpha();
     double beta = steinmetzDatum.get_beta();
     double k = steinmetzDatum.get_k();
+    // ki is a function of (k, alpha, beta, the number of sampled points) alone: the last few are kept, so a run of
+    // evaluations on the same Steinmetz range (a core loss map's cells, an adviser's candidates) integrates it once.
+    const size_t numberPoints = settings.get_inputs_number_points_sampled_waveforms();
+    struct KiMemoEntry {
+        double k, alpha, beta;
+        size_t numberPoints;
+        double ki;
+    };
+    thread_local std::vector<KiMemoEntry> kiMemo;
+    for (const auto& entry : kiMemo) {
+        if (entry.k == k && entry.alpha == alpha && entry.beta == beta && entry.numberPoints == numberPoints) {
+            return entry.ki;
+        }
+    }
     std::vector<double> theta_vect(settings.get_inputs_number_points_sampled_waveforms());
     std::generate(theta_vect.begin(), theta_vect.end(), [n = 0]() mutable {
         return n++ * 2 * std::numbers::pi / settings.get_inputs_number_points_sampled_waveforms();
@@ -2331,6 +2363,10 @@ double CoreLossesIGSEModel::get_ki(SteinmetzCoreLossesMethodRangeDatum steinmetz
     }
 
     double ki = k / (pow(2 * std::numbers::pi, alpha - 1) * theta_int);
+    if (kiMemo.size() == 8) {
+        kiMemo.erase(kiMemo.begin());
+    }
+    kiMemo.push_back({k, alpha, beta, numberPoints, ki});
     return ki;
 }
 
@@ -2419,8 +2455,10 @@ double CoreLossesIGSEModel::compute_core_volumetric_losses(const CoreMaterial& c
         }
     }
 
+    // Whether the waveform has a time axis, read once: the plain getters copy the whole waveform.
+    const bool hasTime = magneticFluxDensity.get_waveform().value().get_time().has_value();
     for (size_t i = 0; i < numberPoints - 1; ++i) {
-        if (magneticFluxDensity.get_waveform().value().get_time()) {
+        if (hasTime) {
             timeDifference = flux_density_segment_duration(magneticFluxDensityWaveform, magneticFluxDensityTime, i, "iGSE");
             if (timeDifference == 0) {
                 continue;  // a repeated sample: a zero-length segment adds nothing to the integral
@@ -2677,9 +2715,11 @@ double CoreLossesciGSEModel::compute_core_volumetric_losses(const CoreMaterial& 
     // then sum them weighted by their duty cycle (time fraction)
     double totalVolumetricLosses = 0.0;
     
+    // Whether the waveform has a time axis, read once: the plain getters copy the whole waveform.
+    const bool magneticFluxDensityHasTime = magneticFluxDensity.get_waveform().value().get_time().has_value();
     for (size_t i = 0; i < numberPoints - 1; ++i) {
         double timeDifference;
-        if (magneticFluxDensity.get_waveform().value().get_time()) {
+        if (magneticFluxDensityHasTime) {
             timeDifference = flux_density_segment_duration(magneticFluxDensityWaveform, magneticFluxDensityTime, i, "ciGSE");
             if (timeDifference == 0) {
                 continue;  // a repeated sample: a zero-length segment adds nothing to the integral
@@ -2815,8 +2855,10 @@ double CoreLossesAlbachModel::compute_core_volumetric_losses(const CoreMaterial&
         }
     }
 
+    // Whether the waveform has a time axis, read once: the plain getters copy the whole waveform.
+    const bool magneticFluxDensityHasTime = magneticFluxDensity.get_waveform().value().get_time().has_value();
     for (size_t i = 0; i < albachNumberPoints - 1; ++i) {
-        if (magneticFluxDensity.get_waveform().value().get_time()) {
+        if (magneticFluxDensityHasTime) {
             timeDifference = flux_density_segment_duration(magneticFluxDensityWaveform, magneticFluxDensityTime, i, "Albach");
             if (timeDifference == 0) {
                 continue;  // a repeated sample: a zero-length segment adds nothing to the integral
@@ -2931,8 +2973,10 @@ double CoreLossesMSEModel::compute_core_volumetric_losses(const CoreMaterial& co
         }
     }
 
+    // Whether the waveform has a time axis, read once: the plain getters copy the whole waveform.
+    const bool magneticFluxDensityHasTime = magneticFluxDensity.get_waveform().value().get_time().has_value();
     for (size_t i = 0; i < mseNumberPoints - 1; ++i) {
-        if (magneticFluxDensity.get_waveform().value().get_time()) {
+        if (magneticFluxDensityHasTime) {
             timeDifference = flux_density_segment_duration(magneticFluxDensityWaveform, magneticFluxDensityTime, i, "MSE");
             if (timeDifference == 0) {
                 continue;  // a repeated sample: a zero-length segment adds nothing to the integral
@@ -3051,8 +3095,10 @@ double CoreLossesNSEModel::compute_core_volumetric_losses(const CoreMaterial& co
     double volumetricLossesSum = 0;
     double timeDifference;
 
+    // Whether the waveform has a time axis, read once: the plain getters copy the whole waveform.
+    const bool magneticFluxDensityHasTime = magneticFluxDensity.get_waveform().value().get_time().has_value();
     for (size_t i = 0; i < magneticFluxDensityWaveform.size() - 1; ++i) {
-        if (magneticFluxDensity.get_waveform().value().get_time()) {
+        if (magneticFluxDensityHasTime) {
             timeDifference = flux_density_segment_duration(magneticFluxDensityWaveform, magneticFluxDensityTime, i, "NSE");
             if (timeDifference == 0) {
                 continue;  // a repeated sample: a zero-length segment adds nothing to the integral
@@ -4158,8 +4204,10 @@ double CoreLossesRoshenModel::get_eddy_current_losses_density(Core core,
         }
     }
 
+    // Whether the waveform has a time axis, read once: the plain getters copy the whole waveform.
+    const bool magneticFluxDensityHasTime = magneticFluxDensity.get_waveform().value().get_time().has_value();
     for (size_t i = 0; i < eddyNumberPoints - 1; ++i) {
-        if (magneticFluxDensity.get_waveform().value().get_time()) {
+        if (magneticFluxDensityHasTime) {
             timeDifference = flux_density_segment_duration(magneticFluxDensityWaveform, magneticFluxDensityTime, i, "Roshen eddy-current");
             if (timeDifference == 0) {
                 continue;  // a repeated sample: a zero-length segment adds nothing to the integral
@@ -4231,8 +4279,10 @@ double CoreLossesRoshenModel::get_excess_eddy_current_losses_density(OperatingPo
         }
     }
 
+    // Whether the waveform has a time axis, read once: the plain getters copy the whole waveform.
+    const bool magneticFluxDensityHasTime = magneticFluxDensity.get_waveform().value().get_time().has_value();
     for (size_t i = 0; i < excessNumberPoints - 1; ++i) {
-        if (magneticFluxDensity.get_waveform().value().get_time()) {
+        if (magneticFluxDensityHasTime) {
             timeDifference = flux_density_segment_duration(magneticFluxDensityWaveform, magneticFluxDensityTime, i, "Roshen excess eddy-current");
             if (timeDifference == 0) {
                 continue;  // a repeated sample: a zero-length segment adds nothing to the integral

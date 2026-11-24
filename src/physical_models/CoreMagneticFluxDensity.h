@@ -3,6 +3,7 @@
 #include "physical_models/InitialPermeability.h"
 #include <MAS.hpp>
 #include <array>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -129,6 +130,15 @@ class CoreMagneticFluxDensity {
     std::vector<Region> _regions;
     std::shared_ptr<const InitialPermeability::MagnetisationCurve> _curve;
     size_t _numberRowsPerBend;
+    // For every region, the first region with the very same slices, depth and flux share (a core's mirror-image corners):
+    // its solution is the twin's, bit for bit, so calculate_flux_densities solves it once.
+    std::vector<size_t> _regionTwins;
+    // The canonical geometry of a bend (its curvilinear squares, clipped at the cuts), by (widthA, widthB, cutA, cutB):
+    // a core's mirror-image corners are computed once and placed twice.
+    struct BendGeometry;
+    std::map<std::array<double, 4>, std::shared_ptr<const BendGeometry>> _bendGeometries;
+    static BendGeometry compute_bend_geometry(double widthA, double widthB, double cutA, double cutB, size_t numberRows);
+    void find_region_twins();
 
     void build_two_piece_set(Core core);
     void build_toroid(Core core);

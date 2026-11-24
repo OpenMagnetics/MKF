@@ -9,6 +9,7 @@
 #include <cmath>
 #include <complex>
 #include <limits>
+#include <map>
 #include <numbers>
 
 namespace OpenMagnetics {
@@ -107,6 +108,7 @@ CoreMagneticFluxDensity::CoreMagneticFluxDensity(const Magnetic& magnetic, doubl
     auto coreType = core.get_functional_description().get_type();
     if (coreType == CoreType::TOROIDAL) {
         build_toroid(core);
+        find_region_twins();
         return;
     }
     auto family = core.get_shape_family();
@@ -117,6 +119,41 @@ CoreMagneticFluxDensity::CoreMagneticFluxDensity(const Magnetic& magnetic, doubl
                                       "covered yet, not this " + std::string(magic_enum::enum_name(family)) + " core");
     }
     build_two_piece_set(core);
+    find_region_twins();
+}
+
+void CoreMagneticFluxDensity::find_region_twins() {
+    auto same = [](const Region& left, const Region& right) {
+        if (left.depth != right.depth || left.fluxShare != right.fluxShare || left.slices.size() != right.slices.size()) {
+            return false;
+        }
+        for (size_t sliceIndex = 0; sliceIndex < left.slices.size(); ++sliceIndex) {
+            const auto& leftPaths = left.slices[sliceIndex].paths;
+            const auto& rightPaths = right.slices[sliceIndex].paths;
+            if (leftPaths.size() != rightPaths.size()) {
+                return false;
+            }
+            for (size_t pathIndex = 0; pathIndex < leftPaths.size(); ++pathIndex) {
+                const auto& a = leftPaths[pathIndex];
+                const auto& b = rightPaths[pathIndex];
+                if (a.length != b.length || a.width != b.width || a.gapLength != b.gapLength || a.lengthFraction != b.lengthFraction ||
+                    a.cellIndexes.empty() != b.cellIndexes.empty()) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    };
+    _regionTwins.resize(_regions.size());
+    for (size_t regionIndex = 0; regionIndex < _regions.size(); ++regionIndex) {
+        _regionTwins[regionIndex] = regionIndex;
+        for (size_t candidate = 0; candidate < regionIndex; ++candidate) {
+            if (_regionTwins[candidate] == candidate && same(_regions[candidate], _regions[regionIndex])) {
+                _regionTwins[regionIndex] = candidate;
+                break;
+            }
+        }
+    }
 }
 
 void CoreMagneticFluxDensity::add_straight_region(const std::string& name, Point origin, Point alongFlux, double length,
@@ -137,15 +174,25 @@ void CoreMagneticFluxDensity::add_straight_region(const std::string& name, Point
     _regions.push_back(Region{name, {slice}, depth, fluxShare});
 }
 
-void CoreMagneticFluxDensity::add_bend_region(const std::string& name, Point corner, bool mirrorX, bool mirrorY, double widthA,
-                                              double widthB, double cutA, double cutB, double depth, double fluxShare) {
-    if (!(widthA > 0) || !(widthB > 0) || !(cutA >= 0) || !(cutB >= 0)) {
-        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
-                                    "Core flux density map: a bend needs positive limb widths, got " + std::to_string(widthA) + " and " +
-                                        std::to_string(widthB));
-    }
+// The canonical geometry of a bend: every curvilinear square of the grid (row by row, column by column), its scale,
+// its full area and what the cuts keep of it.
+struct CoreMagneticFluxDensity::BendGeometry {
+    struct Square {
+        size_t column;
+        size_t row;
+        double scale;
+        double fullArea;
+        double clippedArea;
+        Polygon clipped;
+        bool kept;
+    };
+    size_t numberColumns;
+    std::vector<Square> squares;
+};
+
+CoreMagneticFluxDensity::BendGeometry CoreMagneticFluxDensity::compute_bend_geometry(double widthA, double widthB, double cutA, double cutB,
+                                                                                    size_t numberRows) {
     SchwarzChristoffelBend bend(widthA, widthB);
-    const size_t numberRows = _numberRowsPerBend;
     const double step = std::numbers::pi / static_cast<double>(numberRows);
     // The walls themselves are branch cuts of the square root: sample just inside them.
     const double wallOffset = 1e-9;
@@ -166,8 +213,8 @@ void CoreMagneticFluxDensity::add_bend_region(const std::string& name, Point cor
     const size_t numberColumns = static_cast<size_t>(std::ceil((highestU - lowestU) / step));
     const size_t pointsPerEdge = 3;
 
-    // pathsByColumn[column][row]: the bend's curvilinear square there, if the cuts leave any of it.
-    std::vector<std::vector<std::optional<Path>>> pathsByColumn(numberColumns, std::vector<std::optional<Path>>(numberRows));
+    BendGeometry geometry;
+    geometry.numberColumns = numberColumns;
     for (size_t rowIndex = 0; rowIndex < numberRows; ++rowIndex) {
         double thetaLow = theta_at(rowIndex);
         double thetaHigh = theta_at(rowIndex + 1);
@@ -206,27 +253,58 @@ void CoreMagneticFluxDensity::add_bend_region(const std::string& name, Point cor
             Polygon clipped = clip_half_plane(canonical, {0, -1}, cutA);  // y >= -cutA
             clipped = clip_half_plane(clipped, {1, 0}, cutB);              // x <= cutB
             double scale = bend.scale(uLow + step / 2, thetaCentre);
-            // The whole curvilinear square is the path; the cut keeps a fraction of it.
-            pathsByColumn[columnIndex][rowIndex] = Path{{}, scale * step, scale * step, 0, 0};
-            if (clipped.size() < 3) {
-                continue;
+            BendGeometry::Square square{columnIndex, rowIndex, scale, fullArea, 0, {}, false};
+            if (clipped.size() >= 3) {
+                double clippedArea = polygon_area(clipped);
+                if (clippedArea > 1e-9 * fullArea) {
+                    square.clippedArea = clippedArea;
+                    square.clipped = std::move(clipped);
+                    square.kept = true;
+                }
             }
-            double clippedArea = polygon_area(clipped);
-            if (!(clippedArea > 1e-9 * fullArea)) {
-                continue;
-            }
-            CoreFluxDensityCell cell;
-            cell.region = name;
-            for (const auto& point : clipped) {
-                double x = mirrorX ? -point[0] : point[0];
-                double y = mirrorY ? -point[1] : point[1];
-                cell.polygon.push_back({corner[0] + x, corner[1] + y});
-            }
-            cell.volume = clippedArea * depth / fluxShare;
-            _cells.push_back(cell);
-            pathsByColumn[columnIndex][rowIndex]->cellIndexes.push_back(_cells.size() - 1);
-            pathsByColumn[columnIndex][rowIndex]->lengthFraction = std::min(1.0, clippedArea / fullArea);
+            geometry.squares.push_back(std::move(square));
         }
+    }
+    return geometry;
+}
+
+void CoreMagneticFluxDensity::add_bend_region(const std::string& name, Point corner, bool mirrorX, bool mirrorY, double widthA,
+                                              double widthB, double cutA, double cutB, double depth, double fluxShare) {
+    if (!(widthA > 0) || !(widthB > 0) || !(cutA >= 0) || !(cutB >= 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                                    "Core flux density map: a bend needs positive limb widths, got " + std::to_string(widthA) + " and " +
+                                        std::to_string(widthB));
+    }
+    const size_t numberRows = _numberRowsPerBend;
+    const std::array<double, 4> geometryKey{widthA, widthB, cutA, cutB};
+    auto cached = _bendGeometries.find(geometryKey);
+    if (cached == _bendGeometries.end()) {
+        cached = _bendGeometries.emplace(geometryKey, std::make_shared<const BendGeometry>(
+                                                          compute_bend_geometry(widthA, widthB, cutA, cutB, numberRows))).first;
+    }
+    const BendGeometry& geometry = *cached->second;
+    const size_t numberColumns = geometry.numberColumns;
+    const double step = std::numbers::pi / static_cast<double>(numberRows);
+
+    // pathsByColumn[column][row]: the bend's curvilinear square there, if the cuts leave any of it.
+    std::vector<std::vector<std::optional<Path>>> pathsByColumn(numberColumns, std::vector<std::optional<Path>>(numberRows));
+    for (const auto& square : geometry.squares) {
+        // The whole curvilinear square is the path; the cut keeps a fraction of it.
+        pathsByColumn[square.column][square.row] = Path{{}, square.scale * step, square.scale * step, 0, 0};
+        if (!square.kept) {
+            continue;
+        }
+        CoreFluxDensityCell cell;
+        cell.region = name;
+        for (const auto& point : square.clipped) {
+            double x = mirrorX ? -point[0] : point[0];
+            double y = mirrorY ? -point[1] : point[1];
+            cell.polygon.push_back({corner[0] + x, corner[1] + y});
+        }
+        cell.volume = square.clippedArea * depth / fluxShare;
+        _cells.push_back(cell);
+        pathsByColumn[square.column][square.row]->cellIndexes.push_back(_cells.size() - 1);
+        pathsByColumn[square.column][square.row]->lengthFraction = std::min(1.0, square.clippedArea / square.fullArea);
     }
 
     // Slices: one per column of the grid that keeps any cell. A column the end cuts clip is still solved whole, as the
@@ -590,11 +668,23 @@ CoreFluxDensityInstant CoreMagneticFluxDensity::calculate_flux_densities(double 
     const double magnitude = std::abs(magneticFlux);
     const double initialRelativePermeability = incremental_permeability(0) / constants.vacuumPermeability;
     std::vector<double> pathFluxDensities;
+    // Every region's solved slices (their MMF and paths' B), kept for the twins that reuse them.
+    std::vector<std::vector<std::pair<double, std::vector<double>>>> solvedSlices(_regions.size());
     for (size_t regionIndex = 0; regionIndex < _regions.size(); ++regionIndex) {
         const auto& region = _regions[regionIndex];
         double regionFlux = region.fluxShare * magnitude;
-        for (const auto& slice : region.slices) {
-            double sliceMagnetomotiveForce = solve_slice(slice, regionFlux, region.depth, pathFluxDensities);
+        const size_t twin = _regionTwins[regionIndex];
+        for (size_t sliceIndex = 0; sliceIndex < region.slices.size(); ++sliceIndex) {
+            const auto& slice = region.slices[sliceIndex];
+            double sliceMagnetomotiveForce;
+            if (twin == regionIndex) {
+                sliceMagnetomotiveForce = solve_slice(slice, regionFlux, region.depth, pathFluxDensities);
+                solvedSlices[regionIndex].emplace_back(sliceMagnetomotiveForce, pathFluxDensities);
+            }
+            else {
+                sliceMagnetomotiveForce = solvedSlices[twin][sliceIndex].first;
+                pathFluxDensities = solvedSlices[twin][sliceIndex].second;
+            }
             // The part of the slice the region keeps: its paths' kept fractions, weighted by the flux each carries.
             double keptFlux = 0;
             double totalFlux = 0;
@@ -703,10 +793,24 @@ CoreFluxDensityWaveform CoreMagneticFluxDensity::calculate_waveform(const Magnet
     result.frequency = frequency;
     result.temperature = temperature;
     double largestFlux = -1;
+    // The map is odd in the flux (calculate_flux_densities solves |flux| and applies its sign), so a sample whose |flux|
+    // was already solved is that solution, sign applied: the same numbers, bit for bit.
+    std::map<double, std::vector<double>> solvedByMagnitude;
     for (size_t sample = 0; sample < data.size(); ++sample) {
         double flux = data[sample] * effectiveArea;
         result.magneticFlux.push_back(flux);
-        result.fluxDensities.push_back(map.calculate_flux_densities(flux).fluxDensities);
+        double magnitude = std::abs(flux);
+        auto solved = solvedByMagnitude.find(magnitude);
+        if (solved == solvedByMagnitude.end()) {
+            solved = solvedByMagnitude.emplace(magnitude, map.calculate_flux_densities(magnitude).fluxDensities).first;
+        }
+        std::vector<double> fluxDensities = solved->second;
+        if (flux < 0) {
+            for (auto& fluxDensity : fluxDensities) {
+                fluxDensity = -fluxDensity;
+            }
+        }
+        result.fluxDensities.push_back(std::move(fluxDensities));
         if (std::abs(flux) > largestFlux) {
             largestFlux = std::abs(flux);
             result.peakSampleIndex = sample;
@@ -743,13 +847,22 @@ CoreLossDensityMap CoreMagneticFluxDensity::calculate_core_losses(const Magnetic
     result.volumetricLosses.resize(numberCells);
     result.coreLosses = 0;
     result.volume = 0;
+    // Cells with the same B(t) (a core's mirror-image corners) are priced once: the same excitation gives the same losses.
+    std::map<std::vector<double>, double> volumetricLossesByWaveform;
     for (size_t cell = 0; cell < numberCells; ++cell) {
-        Waveform cellWaveform;
-        cellWaveform.set_time(waveform.time);
         std::vector<double> data(waveform.time.size());
         for (size_t sample = 0; sample < waveform.time.size(); ++sample) {
             data[sample] = waveform.fluxDensities[sample][cell];
         }
+        auto priced = volumetricLossesByWaveform.find(data);
+        if (priced != volumetricLossesByWaveform.end()) {
+            result.volumetricLosses[cell] = priced->second;
+            result.coreLosses += priced->second * waveform.cells[cell].volume;
+            result.volume += waveform.cells[cell].volume;
+            continue;
+        }
+        Waveform cellWaveform;
+        cellWaveform.set_time(waveform.time);
         cellWaveform.set_data(data);
         SignalDescriptor fluxDensity;
         fluxDensity.set_waveform(cellWaveform);
@@ -759,6 +872,7 @@ CoreLossDensityMap CoreMagneticFluxDensity::calculate_core_losses(const Magnetic
         excitation.set_frequency(waveform.frequency);
         excitation.set_magnetic_flux_density(fluxDensity);
         double volumetricLosses = coreLossesModel.get_core_volumetric_losses(material, excitation, waveform.temperature);
+        volumetricLossesByWaveform.emplace(std::move(data), volumetricLosses);
         result.volumetricLosses[cell] = volumetricLosses;
         result.coreLosses += volumetricLosses * waveform.cells[cell].volume;
         result.volume += waveform.cells[cell].volume;
