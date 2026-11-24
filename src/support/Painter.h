@@ -24,6 +24,18 @@ enum class ColorPalette {
     GRAYSCALE       // Black to white
 };
 
+// What paint_core_flux_density colours the core's cells by (ABT #2534):
+//   PEAK                  - |B| at the instant the wound column's flux is largest (the saturation view).
+//   ALTERNATING_AMPLITUDE - (max - min) / 2 of each cell's B over the period (the loss view).
+//   ANIMATION             - |B| at every sample of the period, played as an SVG animation.
+//   VOLUMETRIC_LOSSES     - each cell's core losses (W/m3): its own B(t) priced by MKF's core-loss model.
+enum class CoreFluxDensityView {
+    PEAK,
+    ALTERNATING_AMPLITUDE,
+    ANIMATION,
+    VOLUMETRIC_LOSSES
+};
+
 // Which plane a whole-magnetic drawing projects (ABT #617, Alf 2026-08-10):
 //   XY - the classic winding-window cross-section (radial x, axial y), symmetric half.
 //   YZ - the CONNECTION-FACE view (depth z horizontal, axial y vertical), drawn WITHOUT
@@ -531,6 +543,11 @@ class Painter : public PainterInterface {
     // symmetry, dragbacks as displaced lanes) - see PainterProjection.
     void paint_magnetic(Magnetic magnetic, PainterProjection projection = PainterProjection::XY);
     void paint_core(Magnetic magnetic);
+    // The flux density inside the core, cell by cell (CoreMagneticFluxDensity), over the operating point's flux
+    // waveform as MKF computes it. Paints the core itself: call it instead of paint_core. Cells at or above the
+    // material's B_sat are outlined in the PEAK view.
+    void paint_core_flux_density(Magnetic magnetic, OperatingPoint operatingPoint, CoreFluxDensityView view = CoreFluxDensityView::PEAK,
+                                 ColorPalette palette = ColorPalette::INFERNO, bool showColorBar = true);
     void paint_bobbin(Magnetic magnetic);
     // Magnetic shunts (MAS-RFC 0015): each sheet's rectangle in the 2D section, at its coordinates
     // (x radial, y axial) with its width and height. Only the +x half is drawn, like the rest of the

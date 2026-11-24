@@ -1,5 +1,6 @@
 #include "physical_models/WindingLosses.h"
 #include "support/Painter.h"
+#include "physical_models/CoreMagneticFluxDensity.h"
 #include "support/Utils.h"
 #include "support/CciCoordinatesData.h"
 #include <cfloat>
@@ -2318,6 +2319,196 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, Magnetic magne
         std::string label = stream.str() + (logarithmicScale ? " log10(A/m)" : " A/m");
         auto& point = datum.get_point();
         paint_field_point(point[0], point[1], pixelXDimension, pixelYDimension, color, label);
+    }
+}
+
+namespace {
+// SMIL <animate>: the cell's fill stepping through the waveform's samples.
+class SvgAnimate : public SVG::Element {
+  protected:
+    std::string tag() override { return "animate"; }
+};
+}  // namespace
+
+void Painter::paint_core_flux_density(Magnetic magnetic, OperatingPoint operatingPoint, CoreFluxDensityView view, ColorPalette palette, bool showColorBar) {
+    set_image_size(magnetic);
+    auto core = magnetic.get_core();
+    _coreFamily = core.get_shape_family();
+    auto result = CoreMagneticFluxDensity::calculate_waveform(magnetic, operatingPoint);
+    const size_t numberCells = result.cells.size();
+    const bool losses = view == CoreFluxDensityView::VOLUMETRIC_LOSSES;
+    std::optional<CoreLossDensityMap> lossMap;
+    if (losses) {
+        lossMap = CoreMagneticFluxDensity::calculate_core_losses(magnetic, result);
+    }
+
+    // The samples the animation steps through: the whole period, thinned to at most 64 frames.
+    std::vector<size_t> frames;
+    if (view == CoreFluxDensityView::ANIMATION) {
+        const size_t maximumFrames = 64;
+        size_t numberSamples = result.fluxDensities.size();
+        size_t numberFrames = std::min(numberSamples, maximumFrames);
+        for (size_t frame = 0; frame < numberFrames; ++frame) {
+            frames.push_back(frame * numberSamples / numberFrames);
+        }
+    }
+    std::vector<double> values(numberCells, 0);
+    double largest = 0;
+    for (size_t cell = 0; cell < numberCells; ++cell) {
+        switch (view) {
+            case CoreFluxDensityView::PEAK:
+                values[cell] = result.peakFluxDensities[cell];
+                break;
+            case CoreFluxDensityView::ALTERNATING_AMPLITUDE:
+                values[cell] = result.alternatingFluxDensityAmplitudes[cell];
+                break;
+            case CoreFluxDensityView::ANIMATION:
+                values[cell] = result.peakFluxDensities[cell];
+                break;
+            case CoreFluxDensityView::VOLUMETRIC_LOSSES:
+                values[cell] = lossMap->volumetricLosses[cell];
+                break;
+        }
+        if (std::isnan(values[cell])) {
+            throw InvalidInputException(ErrorCode::CALCULATION_INVALID_RESULT, "Core flux density to paint has a NaN value");
+        }
+        largest = std::max(largest, values[cell]);
+    }
+    // The scale spans the map's own range, so its structure shows whatever the flux level.
+    double smallest = values.empty() ? 0.0 : *std::min_element(values.begin(), values.end());
+    double minimumValue = settings.get_painter_minimum_value_colorbar().value_or(smallest);
+    double maximumValue = settings.get_painter_maximum_value_colorbar().value_or(largest);
+    if (!(maximumValue > minimumValue)) {
+        // A uniform map: a span of 0.1 % around its one value, so every cell takes the palette's low end.
+        maximumValue = minimumValue + std::max(1e-3 * std::abs(minimumValue), 1e-9);
+    }
+    auto colorOf = [&](double value) {
+        uint32_t color = get_uint_color_from_palette((value - minimumValue) / (maximumValue - minimumValue), palette);
+        std::stringstream stream;
+        stream << "#" << std::hex << std::setw(6) << std::setfill('0') << color;
+        return stream.str();
+    };
+    auto milliTesla = [losses](double value) {
+        std::stringstream stream;
+        if (losses) {
+            stream << std::fixed << std::setprecision(0) << value / 1000 << " kW/m3";
+        }
+        else {
+            stream << std::fixed << std::setprecision(0) << value * 1000 << " mT";
+        }
+        return stream.str();
+    };
+
+    // The Painter draws a symmetric two-piece set from its main column's axis out, and its -x half too when the
+    // winding windows are per column or the real winding is drawn: the map's cells are that +x half, mirrored here.
+    auto family = core.get_shape_family();
+    bool toroid = family == CoreShapeFamily::T;
+    bool mirror = !toroid && family != CoreShapeFamily::U &&
+                  (core.get_processed_description()->get_winding_windows().size() > 1 || settings.get_coil_use_real_winding_geometry());
+
+    auto group = _root.add_child<SVG::Group>();
+    auto saturatedGroup = _root.add_child<SVG::Group>();
+    std::string saturatedClass = generate_random_string();
+    _root.style("." + saturatedClass).set_attr("fill", "none").set_attr("stroke", "#ff0000").set_attr("stroke-width", std::to_string(2e-5 * _scale));
+    double minX = std::numeric_limits<double>::max(), maxX = std::numeric_limits<double>::lowest();
+    double minY = std::numeric_limits<double>::max(), maxY = std::numeric_limits<double>::lowest();
+    for (size_t cell = 0; cell < numberCells; ++cell) {
+        for (int side = 0; side < (mirror ? 2 : 1); ++side) {
+            std::vector<SVG::Point> points;
+            for (const auto& point : result.cells[cell].polygon) {
+                double x = side == 0 ? point[0] : -point[0];
+                points.push_back(SVG::Point(x, point[1]));
+                minX = std::min(minX, x);
+                maxX = std::max(maxX, x);
+                minY = std::min(minY, point[1]);
+                maxY = std::max(maxY, point[1]);
+            }
+            auto scaled = scale_points(points, 0, _scale);
+            auto polygon = group->add_child<SVG::Polygon>(scaled);
+            std::string color = colorOf(values[cell]);
+            // The stroke in the fill's colour closes the hairline seams between neighbouring cells.
+            polygon->set_attr("fill", color).set_attr("stroke", color).set_attr("stroke-width", std::to_string(1e-5 * _scale));
+            std::string label = result.cells[cell].region + ": " + milliTesla(values[cell]);
+            polygon->add_child<SVG::Title>(escape_xml(label));
+            if (view == CoreFluxDensityView::ANIMATION) {
+                std::string colors;
+                for (size_t frame = 0; frame < frames.size(); ++frame) {
+                    colors += (frame == 0 ? "" : ";") + colorOf(std::abs(result.fluxDensities[frames[frame]][cell]));
+                }
+                auto animate = polygon->add_child<SvgAnimate>();
+                animate->set_attr("attributeName", "fill").set_attr("values", colors).set_attr("dur", "2s")
+                    .set_attr("repeatCount", "indefinite").set_attr("calcMode", "discrete");
+            }
+            if (view == CoreFluxDensityView::PEAK && values[cell] >= result.saturationFluxDensity) {
+                auto outline = saturatedGroup->add_child<SVG::Polygon>(scaled);
+                outline->set_attr("class", saturatedClass);
+            }
+        }
+    }
+
+    if (showColorBar && numberCells > 0) {
+        double extentX = maxX - minX;
+        double extentY = maxY - minY;
+        double barWidth = extentX * 0.06;
+        double barHeight = extentY * 0.7;
+        double barX = maxX + extentX * 0.12;
+        double barY = (maxY + minY) / 2;
+        // A toroid's SVG is flipped upside down on export (y up): mirror the bar about its centre so it still reads
+        // low at the bottom, and un-mirror each label's glyphs.
+        auto barPosition = [&](double y) { return toroid ? 2 * barY - y : y; };
+        const size_t numberSteps = 32;
+        for (size_t step = 0; step < numberSteps; ++step) {
+            double value = minimumValue + (static_cast<double>(step) + 0.5) / numberSteps * (maximumValue - minimumValue);
+            double stepHeight = barHeight / numberSteps;
+            double stepY = barY - barHeight / 2 + (static_cast<double>(step) + 0.5) * stepHeight;
+            std::string cssClassName = generate_random_string();
+            _root.style("." + cssClassName).set_attr("fill", colorOf(value)).set_attr("stroke", colorOf(value));
+            paint_rectangle(barX, barPosition(stepY), barWidth, stepHeight, cssClassName, group);
+        }
+        std::string outlineClass = generate_random_string();
+        _root.style("." + outlineClass).set_attr("fill", "none").set_attr("stroke", "#000000").set_attr("stroke-width", "1");
+        paint_rectangle(barX, barY, barWidth, barHeight, outlineClass, group);
+        double fontSize = barHeight * _scale * 0.06;
+        auto addText = [&](double x, double y, const std::string& content, const std::string& anchor) {
+            double textY = -barPosition(y) * _scale;
+            auto* text = _root.add_child<SVG::Text>(x * _scale, textY, escape_xml(content));
+            text->set_attr("font-size", std::to_string(fontSize)).set_attr("fill", "#000000").set_attr("text-anchor", anchor);
+            if (toroid) {
+                text->set_attr("transform", "matrix(1 0 0 -1 0 " + std::to_string(2 * textY) + ")");
+            }
+        };
+        for (double position : {0.0, 0.5, 1.0}) {
+            double value = minimumValue + position * (maximumValue - minimumValue);
+            addText(barX + barWidth * 0.7, barY - barHeight / 2 + position * barHeight, milliTesla(value), "start");
+        }
+        if (view != CoreFluxDensityView::ALTERNATING_AMPLITUDE && !losses && result.saturationFluxDensity > minimumValue &&
+            result.saturationFluxDensity < maximumValue) {
+            double position = (result.saturationFluxDensity - minimumValue) / (maximumValue - minimumValue);
+            addText(barX - barWidth * 0.7, barY - barHeight / 2 + position * barHeight, "Bsat", "end");
+        }
+        // An invisible frame around the bar and its labels: the export's autoscale frames shapes, not text.
+        std::string frameClass = generate_random_string();
+        _root.style("." + frameClass).set_attr("fill", "none").set_attr("stroke", "none");
+        // The loss labels (kW/m3) and the two-line caption run wider than the flux density ones.
+        if (losses) {
+            paint_rectangle(barX + barWidth * 4.5, barY + barHeight * 0.05, barWidth * 11, barHeight * 1.5, frameClass, group);
+        }
+        else {
+            paint_rectangle(barX + barWidth * 1.5, barY, barWidth * 7, barHeight * 1.35, frameClass, group);
+        }
+        std::string caption = view == CoreFluxDensityView::ALTERNATING_AMPLITUDE ? "B amplitude" : "|B| peak";
+        if (view == CoreFluxDensityView::ANIMATION) {
+            caption = "|B| over the period";
+        }
+        if (losses) {
+            std::stringstream stream;
+            stream << "total " << std::setprecision(3) << lossMap->coreLosses << " W";
+            addText(barX - barWidth / 2, barY + barHeight / 2 + barHeight * 0.16, "core losses", "start");
+            addText(barX - barWidth / 2, barY + barHeight / 2 + barHeight * 0.08, stream.str(), "start");
+        }
+        else {
+            addText(barX, barY + barHeight / 2 + barHeight * 0.06, caption, "middle");
+        }
     }
 }
 

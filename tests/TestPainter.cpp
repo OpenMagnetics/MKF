@@ -6161,4 +6161,31 @@ namespace {
         }
         settings.reset();
     }
+    // ABT #2534: the flux density inside the core, as cells coloured by |B| (peak), by the AC amplitude, and animated.
+    TEST_CASE("Test_Painter_Core_Flux_Density_E_And_Toroid", "[support][painter][core-flux-density-painter][smoke-test]") {
+        settings.set_painter_maximum_value_colorbar(std::nullopt);
+        settings.set_painter_minimum_value_colorbar(std::nullopt);
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(100000, 100e-6, 25, WaveformLabel::TRIANGULAR, 4, 0.5, 5);
+        for (std::string shape : {"E 42/21/20", "T 40/24/16"}) {
+            json gapping = shape.front() == 'T' ? json::parse("[]") : OpenMagneticsTesting::get_ground_gap(0.001);
+            auto magnetic = OpenMagneticsTesting::get_quick_magnetic(shape, gapping, {20}, 1, "N87");
+            std::string base = shape.front() == 'T' ? "Toroid" : "E";
+            for (auto [view, name] : std::vector<std::pair<CoreFluxDensityView, std::string>>{
+                     {CoreFluxDensityView::PEAK, "Peak"}, {CoreFluxDensityView::ALTERNATING_AMPLITUDE, "Amplitude"},
+                     {CoreFluxDensityView::ANIMATION, "Animation"},
+                     {CoreFluxDensityView::VOLUMETRIC_LOSSES, "Losses"}}) {
+                auto outFile = outputFilePath;
+                outFile.append("Test_Painter_Core_Flux_Density_" + base + "_" + name + ".svg");
+                std::filesystem::remove(outFile);
+                Painter painter(outFile);
+                painter.paint_core_flux_density(magnetic, inputs.get_operating_point(0), view);
+                auto svg = painter.export_svg();
+                REQUIRE(std::filesystem::exists(outFile));
+                CHECK(svg.find("<polygon") != std::string::npos);
+                CHECK((svg.find("<animate") != std::string::npos) == (view == CoreFluxDensityView::ANIMATION));
+                CHECK((svg.find("kW/m3") != std::string::npos) == (view == CoreFluxDensityView::VOLUMETRIC_LOSSES));
+            }
+        }
+        settings.reset();
+    }
 }  // namespace

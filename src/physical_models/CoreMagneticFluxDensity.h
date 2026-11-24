@@ -1,0 +1,185 @@
+#pragma once
+#include "constructive_models/Magnetic.h"
+#include "physical_models/InitialPermeability.h"
+#include <MAS.hpp>
+#include <array>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
+using namespace MAS;
+
+namespace OpenMagnetics {
+
+/**
+ * @brief One cell of the core's flux density map: a small piece of the core's cross-section, in the
+ * Painter's 2D frame (metres; x across the core, y along the main column for a two-piece set, the ring
+ * plane for a toroid).
+ */
+struct CoreFluxDensityCell {
+    std::vector<std::array<double, 2>> polygon;
+    std::string region;
+    // The core volume the cell stands for (m3): its area times the core's depth, times the copies of the drawn part
+    // the whole core holds (an E core is drawn from the main column's axis out, half of it).
+    double volume;
+};
+
+/**
+ * @brief The flux density map of the core at one instant: |B| and the secant relative permeability
+ * B / (mu0 H) of every cell, aligned with CoreMagneticFluxDensity::get_cells().
+ */
+struct CoreFluxDensityInstant {
+    double magneticFlux;
+    std::vector<double> fluxDensities;
+    std::vector<double> relativePermeabilities;
+    // The magnetomotive force across every region (A), aligned with CoreMagneticFluxDensity::get_regions(); for a
+    // two-piece set the regions are in series around the loop, so their sum is the loop's ferrite MMF.
+    std::vector<double> regionMagnetomotiveForces;
+};
+
+/**
+ * @brief The core's flux density map over an operating point's waveform.
+ * fluxDensities[sample][cell] is signed: positive while the flux in the wound column is positive.
+ */
+struct CoreFluxDensityWaveform {
+    std::vector<CoreFluxDensityCell> cells;
+    std::vector<double> time;
+    std::vector<double> magneticFlux;
+    std::vector<std::vector<double>> fluxDensities;
+    // The sample whose |flux| is largest: the instant the core is nearest saturation.
+    size_t peakSampleIndex;
+    // |B| of every cell at that sample.
+    std::vector<double> peakFluxDensities;
+    // (max - min) / 2 of every cell's signed B over the waveform.
+    std::vector<double> alternatingFluxDensityAmplitudes;
+    double saturationFluxDensity;
+    // The operating point's frequency and core temperature the map was read at.
+    double frequency;
+    double temperature;
+};
+
+/**
+ * @brief The core losses cell by cell: every cell's own B(t) priced by MKF's core-loss model (CoreLosses, the same model
+ * cascade, span checks and DC-bias factor simulate uses), times the cell's volume.
+ */
+struct CoreLossDensityMap {
+    // W/m3 of every cell, aligned with the waveform's cells.
+    std::vector<double> volumetricLosses;
+    // W: the sum of every cell's volumetric losses times its volume.
+    double coreLosses;
+    // m3: the sum of the cells' volumes.
+    double volume;
+};
+
+/**
+ * @class CoreMagneticFluxDensity
+ * @brief Flux density inside the core, cell by cell, from the core's shape (ABT #2534). Analytical: no mesh solve.
+ *
+ * The core is cut into the regions of its magnetic path. A straight limb carries its flux uniformly. A
+ * right-angle bend between two rectangular limbs is the Schwarz-Christoffel L channel already used for the
+ * core's exact reluctance (right_angle_bend_squares, ABT #1766):
+ *     dz/dzeta = (b/pi) sqrt((zeta - q) / (zeta + 1)) / zeta,  q = (a/b)^2,
+ * integrated in closed form with s = sqrt((zeta - q)/(zeta + 1)):
+ *     z(s) = (2/pi) [b atanh(s) - a atan(b s / a)],
+ * the window's re-entrant corner at z = 0, the limb of width a along -y and the limb of width b along +x. Its
+ * streamlines (arg zeta constant) and equipotentials (|zeta| constant) cut the bend into curvilinear squares:
+ * equal flux per row, and |B| = flux per depth / (b |s|) in the linear limit, which crowds at the window corner
+ * and vanishes at the core's outer corner. A toroid is cut into concentric rings, B ~ 1/r.
+ *
+ * Saturation is local: every cell reads its own permeability on the material's magnetisation curve
+ * (InitialPermeability::get_magnetisation_curve, the datasheet B(H) of ABT #2470). A region is a series of slices
+ * between equipotentials (the bend's lines of constant |zeta|, a ring's whole section); the cells of a slice are in
+ * parallel and share its magnetomotive force, so a cell that saturates passes its flux to its neighbours in the same
+ * slice: the flux steps around a saturating window corner and comes back past it. In the linear limit every
+ * curvilinear square has the same reluctance and the map is the conformal field exactly.
+ *
+ * The flux in the wound column is imposed, the flux MKF itself computes for the operating point
+ * (MagnetizingInductance::calculate_inductance_and_magnetic_flux_density: B(t) times Ae), so the map spreads the
+ * flux MKF reports; it does not recompute it.
+ *
+ * Covered: two-piece sets of rectangular-limb shapes (E, planar E, EF, U) and toroids. Other shapes throw.
+ */
+class CoreMagneticFluxDensity {
+  public:
+    // One parallel path of a slice: its length along the flux and width across it, the cells painted with its B, and,
+    // for a gapped ring, the gap length in series with it. A region's end cut keeps lengthFraction of the path (0 when
+    // it removes the path's cell entirely): the cut decides how much of the slice the region holds, not the field in
+    // it, so the path's B comes from its whole length and only that fraction of the slice's MMF is the region's.
+    struct Path {
+        std::vector<size_t> cellIndexes;
+        double length;
+        double width;
+        double gapLength = 0;
+        double lengthFraction = 1;
+    };
+    struct Slice {
+        std::vector<Path> paths;
+    };
+    struct Region {
+        std::string name;
+        std::vector<Slice> slices;
+        double depth;
+        // Share of the wound column's flux the region carries.
+        double fluxShare;
+    };
+
+  private:
+    std::vector<CoreFluxDensityCell> _cells;
+    std::vector<Region> _regions;
+    std::shared_ptr<const InitialPermeability::MagnetisationCurve> _curve;
+    size_t _numberRowsPerBend;
+
+    void build_two_piece_set(Core core);
+    void build_toroid(Core core);
+    void add_straight_region(const std::string& name, std::array<double, 2> origin, std::array<double, 2> alongFlux,
+                             double length, std::array<double, 2> acrossFlux, double width, double depth, double fluxShare);
+    void add_bend_region(const std::string& name, std::array<double, 2> corner, bool mirrorX, bool mirrorY, double widthA,
+                         double widthB, double cutA, double cutB, double depth, double fluxShare);
+
+    double field_strength(double fluxDensity) const;
+    double flux_density(double fieldStrength) const;
+    double incremental_permeability(double fieldStrength) const;
+    double path_flux_density(const Path& path, double magnetomotiveForce) const;
+    double solve_slice(const Slice& slice, double sliceFlux, double depth, std::vector<double>& pathFluxDensities) const;
+
+  public:
+    /**
+     * @param magnetic A magnetic whose core is processed and has its material.
+     * @param temperature Core temperature (C) the magnetisation curve is read at.
+     * @param frequency Frequency the magnetisation curve is read at, as MKF's magnetizing model reads it.
+     * @param numberRowsPerBend Streamline rows each bend is cut into (resolution of the map).
+     */
+    CoreMagneticFluxDensity(const Magnetic& magnetic, double temperature, std::optional<double> frequency = std::nullopt,
+                            size_t numberRowsPerBend = 12);
+
+    const std::vector<CoreFluxDensityCell>& get_cells() const { return _cells; }
+    const std::vector<Region>& get_regions() const { return _regions; }
+    double get_saturation_flux_density() const { return _curve->saturationFluxDensity; }
+
+    /**
+     * @brief |B| and mu_r of every cell when the wound column carries the flux magneticFlux (Wb, signed; the map is
+     * odd in it).
+     */
+    CoreFluxDensityInstant calculate_flux_densities(double magneticFlux) const;
+
+    /**
+     * @brief |B| (T) at a point of the Painter frame for the wound-column flux magneticFlux. Throws outside the
+     * core's ferrite.
+     */
+    double calculate_flux_density_at_point(double x, double y, double magneticFlux) const;
+
+    /**
+     * @brief The map over the operating point's flux waveform, as MKF's magnetizing model computes it.
+     */
+    static CoreFluxDensityWaveform calculate_waveform(const Magnetic& magnetic, const OperatingPoint& operatingPoint,
+                                                      size_t numberRowsPerBend = 12);
+
+    /**
+     * @brief The core losses of the map: each cell's signed B(t) over the period is a flux density excitation of its
+     * own, priced by CoreLosses::get_core_volumetric_losses at the waveform's frequency and temperature.
+     */
+    static CoreLossDensityMap calculate_core_losses(const Magnetic& magnetic, const CoreFluxDensityWaveform& waveform);
+};
+
+} // namespace OpenMagnetics
