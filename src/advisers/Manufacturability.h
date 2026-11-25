@@ -30,11 +30,24 @@ enum class ManufacturabilityStatus : int {
 };
 
 /**
+ * @brief The rule a finding answers, as an enum (Alf, 2026-11-24: answers between components are enums, never
+ * strings). Its name is the rule id of src/data/dfm_rules.json ("R1" .. "R22").
+ */
+enum class ManufacturabilityRule : int {
+    R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11,
+    R12, R13, R14, R15, R16, R17, R18, R19, R20, R21, R22
+};
+
+/// The rule for a rule id ("R18"); throws for an id that names no rule.
+ManufacturabilityRule manufacturability_rule_from_id(const std::string& ruleId);
+
+/**
  * @brief One finding of the manufacturability report: exactly one per rule.
  */
 class ManufacturabilityFinding {
     private:
         std::string ruleId;
+        std::optional<ManufacturabilityRule> rule;
         std::string title;
         ManufacturabilityStatus status = ManufacturabilityStatus::NOT_EVALUATED;
         std::string message;
@@ -48,10 +61,15 @@ class ManufacturabilityFinding {
     public:
         ManufacturabilityFinding() = default;
         ManufacturabilityFinding(const std::string& ruleId, const std::string& title, const std::string& source) :
-            ruleId(ruleId), title(title), source(source) {}
+            ruleId(ruleId), rule(manufacturability_rule_from_id(ruleId)), title(title), source(source) {}
 
         const std::string& get_rule_id() const { return ruleId; }
-        void set_rule_id(const std::string& value) { ruleId = value; }
+        void set_rule_id(const std::string& value) {
+            rule = manufacturability_rule_from_id(value);
+            ruleId = value;
+        }
+        /// The rule as an enum; throws for a finding built without a rule id.
+        ManufacturabilityRule get_rule() const;
 
         const std::string& get_title() const { return title; }
         void set_title(const std::string& value) { title = value; }
@@ -84,7 +102,7 @@ class ManufacturabilityFinding {
 void to_json(json& j, const ManufacturabilityFinding& x);
 
 /**
- * @brief The design-for-manufacturing report: one finding per rule, R1 to R17.
+ * @brief The design-for-manufacturing report: one finding per rule, R1 to R22.
  *
  * Rules owned by other work packages are present with status NOT_EVALUATED and the
  * owning work package as the reason, so the report is complete and honest.
@@ -103,8 +121,10 @@ class ManufacturabilityReport {
          * @throws std::runtime_error when the report carries no such rule.
          */
         const ManufacturabilityFinding& get_finding(const std::string& ruleId) const;
+        const ManufacturabilityFinding& get_finding(ManufacturabilityRule rule) const;
 
         bool has_finding(const std::string& ruleId) const;
+        bool has_finding(ManufacturabilityRule rule) const;
 
         size_t count_by_status(ManufacturabilityStatus status) const;
 };
@@ -129,9 +149,11 @@ class Manufacturability {
         /// The rule data as loaded from src/data/dfm_rules.json.
         const json& get_rules() const { return _rules; }
 
-        /// The whole report, one finding per rule R1..R17.
+        /// The whole report, one finding per rule R1..R22. The Mas form reads its outputs too (R22); the form
+        /// without outputs reports R22 as not evaluated.
         ManufacturabilityReport calculate_report(Mas& mas);
         ManufacturabilityReport calculate_report(Magnetic& magnetic, Inputs& inputs);
+        ManufacturabilityReport calculate_report(Magnetic& magnetic, Inputs& inputs, const std::vector<Outputs>& outputs);
 
         // One method per standalone rule, so each can be tested (and reverted) on its own.
         ManufacturabilityFinding evaluate_r1_layer_parity(Magnetic& magnetic);
@@ -155,6 +177,20 @@ class Manufacturability {
         ManufacturabilityFinding evaluate_r15_lateral_gaps(Magnetic& magnetic, Inputs& inputs);
         ManufacturabilityFinding evaluate_r16_toroid_insulation_and_header(Magnetic& magnetic, Inputs& inputs);
         ManufacturabilityFinding evaluate_r17_production_tests(Magnetic& magnetic, Inputs& inputs);
+        // ABT #2548 (Alf, 2026-11-24): the construction rules from the Alvier study's design audit
+        // (ManufacturabilityConstruction.cpp; numbers and sources in src/data/dfm_rules.json).
+        /// R18: rectangular wire in a single layer per section; foil one turn of each parallel per layer. FAIL.
+        ManufacturabilityFinding evaluate_r18_flat_wire_single_layer(Magnetic& magnetic);
+        /// R19: every conduction section's stored filling factor within the toroid or the other-core limit. FAIL.
+        ManufacturabilityFinding evaluate_r19_section_fill(Magnetic& magnetic);
+        /// R20: a toroid's copper (turns x parallels x conducting area) within a share of its bore area. FAIL.
+        ManufacturabilityFinding evaluate_r20_toroid_bore_copper(Magnetic& magnetic);
+        /// R21: no two turn stations overlapping beyond the limit on their real cross-sections
+        /// (Coil::judge_copper_overlaps, turns only). FAIL.
+        ManufacturabilityFinding evaluate_r21_turn_overlap(Magnetic& magnetic);
+        /// R22: a solid conductor thicker than a number of skin depths whose skin and proximity losses exceed a
+        /// share of its winding loss, from the design's outputs. WARNING.
+        ManufacturabilityFinding evaluate_r22_thick_solid_conductor(Magnetic& magnetic, Inputs& inputs, const std::vector<Outputs>& outputs);
 
         /// The stub finding for a rule owned by another work package.
         ManufacturabilityFinding not_evaluated_rule(const std::string& ruleId);

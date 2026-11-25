@@ -170,6 +170,45 @@
         "thickRoundConductingDiameter": 0.0005,
         "_thickRoundConductingDiameter_comment": "Metres. Round enamelled wire of at least this conducting diameter allows maximumWiresPerPinThickRound wires on one pin, finer wire maximumWiresPerPinFineRound. Strands of non-round wire never share a pin: RFC 0013 gives them no count."
     },
+    "R18": {
+        "title": "Flat wire in a single layer",
+        "description": "Rectangular wire is wound in one layer only, flatwise or on edge: a second layer of rectangular wire cannot be laid on the first without crossovers, bulging and damaged enamel at the layer change, and on edge it does not stay in place. Foil is wound one turn per layer (one turn of each parallel per layer), never as several turns side by side in a layer.",
+        "source": "Alf (OpenMagnetics), decision 2026-11-24 on the Alvier SMC study design audit (ABT #2548: 68 of 171 adviser and Henry designs wound rectangular wire on edge in 2-3 layers on bobbin cores): 'option 2 [single layer only]'.",
+        "maximumLayersRectangular": 1,
+        "_maximumLayersRectangular_comment": "Conduction layers of one rectangular-wire winding in one section.",
+        "maximumTurnsPerLayerFoil": 1,
+        "_maximumTurnsPerLayerFoil_comment": "Foil turns of one parallel in one layer: foil is wound one turn per layer by design."
+    },
+    "R19": {
+        "title": "Section filling factor within what a winder can wind",
+        "description": "A section filled past these limits cannot be wound reliably: a toroid's turns crowd at the bore and the shuttle has no room, a bobbin's last layer bulges against the core. The filling factor is MKF's section fillingFactor (the wound layers' extent over the section's).",
+        "source": "Alf (OpenMagnetics), decision 2026-11-24 'Enforce all three' (ABT #2548), on the limits of the Alvier SMC study report section 6.7 (round-wire toroids 60 %, other cores 90 %); 41 of 171 designs exceeded them.",
+        "maximumFillingFactorToroid": 0.6,
+        "maximumFillingFactorOther": 0.9
+    },
+    "R20": {
+        "title": "Toroid copper within 45 % of the bore",
+        "description": "Every turn of a toroid passes through the bore; the copper of all turns must leave room for the winding shuttle. Machine-wound toroids rarely exceed 40-45 % of the bore area. The bore is MKF's toroid winding window (the inner-diameter circle, less a catalogue coating).",
+        "source": "Alf (OpenMagnetics), decision 2026-11-24 'Enforce all three' (ABT #2548); toroid winding practice: a machine fills about 45 % of the hole (Magnetics Inc powder core FAQ and toroid winding guidance as condensed in Henry's DFM playbook); 17 of 171 Alvier study designs exceeded it.",
+        "maximumCopperOverBoreArea": 0.45
+    },
+    "R21": {
+        "title": "No overlapping turns",
+        "description": "Two turns cannot occupy the same copper. Overlaps are judged on the turns' real cross-sections (round, oval, rectangular with rotation, at every station including a toroid's outer crossings) by Coil::judge_copper_overlaps, the same judgement the Painter draws in red.",
+        "source": "Alf (OpenMagnetics), decision 2026-11-24 (ABT #2548); 4 of 171 Alvier study designs overlapped at toroid outer crossings (MKF ABT #2546).",
+        "maximumTurnOverlap": 1e-6,
+        "_maximumTurnOverlap_comment": "Metres. Overlaps up to 1 um are rounding of stored coordinates and the sagitta of flat turns on a round bore, not copper in copper."
+    },
+    "R22": {
+        "title": "Solid conductor much thicker than the skin depth",
+        "description": "A solid round, rectangular or foil conductor more than two skin depths thick at the frequency its AC loss happens at, whose skin and proximity losses are more than 30 % of its winding loss, wastes copper on AC: litz wire (or thinner conductors in parallel) does better. A warning, not a failure: the design can be built.",
+        "source": "Alf (OpenMagnetics), decision 2026-11-24 (ABT #2548), on the Alvier SMC study audit: 12 of 137 solid-wire designs carried round wire 3-8 skin depths thick at 65 kHz with 30-48 % of the winding loss from AC.",
+        "maximumConductorOverSkinDepth": 2.0,
+        "_maximumConductorOverSkinDepth_comment": "Conductor thickness (round: conducting diameter; rectangular and foil: the smaller conducting dimension) over MKF's skin depth at the winding-loss temperature and at the frequency of the AC loss (MKF's skin and proximity losses per harmonic, weighted by loss): for a PFC choke the switching ripple, not the 50 Hz line.",
+        "maximumAcShareOfWindingLoss": 0.3,
+        "_maximumAcShareOfWindingLoss_comment": "(skin + proximity) / (ohmic + skin + proximity) of that winding in MKF's winding losses.",
+        "severity": "warning"
+    },
     "notEvaluated": {
         "R10": "not evaluated (owned by insulation coordination)"
     },

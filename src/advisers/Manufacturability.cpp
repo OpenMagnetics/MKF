@@ -68,6 +68,21 @@ bool terminal_types_contain(const Inputs& inputs, ConnectionType wanted) {
 
 } // namespace
 
+ManufacturabilityRule manufacturability_rule_from_id(const std::string& ruleId) {
+    auto rule = magic_enum::enum_cast<ManufacturabilityRule>(ruleId);
+    if (!rule) {
+        throw std::runtime_error("'" + ruleId + "' names no manufacturability rule (R1 .. R22)");
+    }
+    return rule.value();
+}
+
+ManufacturabilityRule ManufacturabilityFinding::get_rule() const {
+    if (!rule) {
+        throw std::runtime_error("Manufacturability finding was built without a rule id");
+    }
+    return rule.value();
+}
+
 void to_json(json& j, const ManufacturabilityFinding& x) {
     j = json::object();
     j["ruleId"] = x.get_rule_id();
@@ -115,6 +130,14 @@ const ManufacturabilityFinding& ManufacturabilityReport::get_finding(const std::
         }
     }
     throw std::runtime_error("Manufacturability report carries no finding for rule " + ruleId);
+}
+
+const ManufacturabilityFinding& ManufacturabilityReport::get_finding(ManufacturabilityRule rule) const {
+    return get_finding(std::string(magic_enum::enum_name(rule)));
+}
+
+bool ManufacturabilityReport::has_finding(ManufacturabilityRule rule) const {
+    return has_finding(std::string(magic_enum::enum_name(rule)));
 }
 
 bool ManufacturabilityReport::has_finding(const std::string& ruleId) const {
@@ -1162,6 +1185,10 @@ ManufacturabilityFinding Manufacturability::evaluate_r17_production_tests(Magnet
 // The whole report
 // ---------------------------------------------------------------------------------------
 ManufacturabilityReport Manufacturability::calculate_report(Magnetic& magnetic, Inputs& inputs) {
+    return calculate_report(magnetic, inputs, std::vector<Outputs>{});
+}
+
+ManufacturabilityReport Manufacturability::calculate_report(Magnetic& magnetic, Inputs& inputs, const std::vector<Outputs>& outputs) {
     ManufacturabilityReport report;
     report.add_finding(evaluate_r1_layer_parity(magnetic));
     report.add_finding(evaluate_r2_pin_order(magnetic));
@@ -1180,11 +1207,16 @@ ManufacturabilityReport Manufacturability::calculate_report(Magnetic& magnetic, 
     report.add_finding(evaluate_r15_lateral_gaps(magnetic, inputs));
     report.add_finding(evaluate_r16_toroid_insulation_and_header(magnetic, inputs));
     report.add_finding(evaluate_r17_production_tests(magnetic, inputs));
+    report.add_finding(evaluate_r18_flat_wire_single_layer(magnetic));
+    report.add_finding(evaluate_r19_section_fill(magnetic));
+    report.add_finding(evaluate_r20_toroid_bore_copper(magnetic));
+    report.add_finding(evaluate_r21_turn_overlap(magnetic));
+    report.add_finding(evaluate_r22_thick_solid_conductor(magnetic, inputs, outputs));
     return report;
 }
 
 ManufacturabilityReport Manufacturability::calculate_report(Mas& mas) {
-    return calculate_report(mas.get_mutable_magnetic(), mas.get_mutable_inputs());
+    return calculate_report(mas.get_mutable_magnetic(), mas.get_mutable_inputs(), mas.get_outputs());
 }
 
 } // namespace OpenMagnetics
