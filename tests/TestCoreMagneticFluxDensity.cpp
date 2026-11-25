@@ -3,6 +3,7 @@
 #include "physical_models/CoreLosses.h"
 #include "processors/Inputs.h"
 #include "processors/MagneticSimulator.h"
+#include "constructive_models/CorePiece.h"
 #include "support/Exceptions.h"
 #include "support/Settings.h"
 #include "TestingUtils.h"
@@ -351,6 +352,30 @@ OperatingPointExcitation sinusoidal_flux_density_excitation(double peak, double 
     return excitation;
 }
 
+// The linear map's geometric factor sum(l / A) over the regions `include` picks, read off the map's structure alone (not
+// through its solver): a slice's parallel paths in the linear limit pass flux in proportion to width / length, so its
+// reluctance per unit permeability is 1 / sum(w depth / (l + g)); the region keeps the flux-weighted share of it its
+// cuts leave, and carries fluxShare of the column's flux.
+double geometric_factor(const CoreMagneticFluxDensity& map, const std::function<bool(const CoreMagneticFluxDensity::Region&)>& include) {
+    double factor = 0;
+    for (const auto& region : map.get_regions()) {
+        if (!include(region)) {
+            continue;
+        }
+        for (const auto& slice : region.slices) {
+            double permeance = 0, keptFlux = 0;
+            for (const auto& path : slice.paths) {
+                double pathPermeance = path.width * region.depth / (path.length + path.gapLength);
+                permeance += pathPermeance;
+                keptFlux += pathPermeance * path.lengthFraction;
+            }
+            REQUIRE(permeance > 0);
+            factor += region.fluxShare / permeance * keptFlux / permeance;
+        }
+    }
+    return factor;
+}
+
 Core processed_core(json functionalDescription) {
     json coreJson;
     coreJson["functionalDescription"] = functionalDescription;
@@ -400,6 +425,10 @@ TEST_CASE("Core flux density map covers every closed and drum family, and prices
     cores.emplace_back("moulded body", processed_core({
         {"type", "closedShape"}, {"material", json::array({"Kool Mµ 60", "Kool Mµ 26"})}, {"shape", moldedShape},
         {"gapping", json::array()}, {"numberStacks", 1}}));
+    // The same body on a plastic bobbin: its post is air (the moulded-losses test's bobbin-post design).
+    cores.emplace_back("moulded body, air post", processed_core({
+        {"type", "closedShape"}, {"material", json::array({"air", "Kool Mµ 26", "Kool Mµ 26"})}, {"shape", moldedShape},
+        {"gapping", json::array()}, {"numberStacks", 1}}));
 
     for (auto& [name, core] : cores) {
         INFO(name);
@@ -420,6 +449,52 @@ TEST_CASE("Core flux density map covers every closed and drum family, and prices
         }
         if (name == "semi-shielded drum" || name == "moulded body") {
             CHECK(map.get_materials().size() == 2);
+        }
+        auto all = [](const CoreMagneticFluxDensity::Region&) { return true; };
+        if (family == CoreShapeFamily::MOLDED) {
+            // A moulded body: the linear map has MKF's reluctance for it, the regions' sum(l / A) (CorePieceMolded).
+            CHECK_THAT(geometric_factor(map, all), Catch::Matchers::WithinRel(core.get_effective_length() / core.get_effective_area(), 1e-6));
+        }
+        if (family == CoreShapeFamily::DRUM || family == CoreShapeFamily::DRUM_RING || family == CoreShapeFamily::DRUM_SEMISHIELDED) {
+            // A drum: the post, corners and flanges have MKF's drum reluctance (CorePiece constants, the drum's share for a
+            // ring or shell, which the map carries straight and is not part of it).
+            auto piece = CorePiece::factory(core.resolve_shape());
+            auto mixed = piece->get_mixed_material_constants();
+            double drumFactor = mixed ? mixed.value()[0] : std::get<0>(piece->get_shape_constants());
+            CHECK_THAT(geometric_factor(map, [](const CoreMagneticFluxDensity::Region& region) { return region.name != "ring" && region.name != "shell"; }),
+                       Catch::Matchers::WithinRel(drumFactor, 1e-6));
+        }
+        if (name == "moulded body, air post") {
+            // The air post carries the flux at mu0 and is priced at nothing.
+            size_t airCells = 0;
+            auto instant = map.calculate_flux_densities(1e-12);
+            for (size_t cell = 0; cell < map.get_cells().size(); ++cell) {
+                if (map.get_cells()[cell].air) {
+                    ++airCells;
+                    CHECK_THAT(instant.relativePermeabilities[cell], Catch::Matchers::WithinRel(1.0, 1e-9));
+                }
+            }
+            CHECK(airCells > 0);
+            CoreFluxDensityWaveform waveform;
+            waveform.cells = map.get_cells();
+            waveform.materials = map.get_materials();
+            waveform.frequency = frequency;
+            waveform.temperature = temperature;
+            waveform.saturationFluxDensity = map.get_saturation_flux_density();
+            for (size_t sample = 0; sample <= 32; ++sample) {
+                double flux = 2e-6 * std::sin(2 * std::numbers::pi * static_cast<double>(sample) / 32);
+                waveform.time.push_back(static_cast<double>(sample) / 32 / frequency);
+                waveform.magneticFlux.push_back(flux);
+                waveform.fluxDensities.push_back(map.calculate_flux_densities(flux).fluxDensities);
+            }
+            auto lossMap = CoreMagneticFluxDensity::calculate_core_losses(waveform);
+            for (size_t cell = 0; cell < map.get_cells().size(); ++cell) {
+                if (map.get_cells()[cell].air) {
+                    CHECK(lossMap.volumetricLosses[cell] == 0);
+                }
+            }
+            CHECK(lossMap.coreLosses > 0);
+            CHECK(lossMap.unpricedMaterials.empty());
         }
 
         CoreLosses coreLosses;

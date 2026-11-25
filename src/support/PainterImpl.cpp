@@ -1885,6 +1885,7 @@ void Painter::paint_core(Magnetic magnetic) {
         case CoreShapeFamily::ROD:
         case CoreShapeFamily::DRUM_RING:
         case CoreShapeFamily::DRUM_SEMISHIELDED:
+        case CoreShapeFamily::DRUM_PLATE:
         case CoreShapeFamily::MOLDED:
             // Single-solid / piece-and-closer families: no mirrored halves to reconstruct.
             return paint_drum_family_core(core);
@@ -2050,7 +2051,46 @@ void Painter::paint_drum_family_core(Core core) {
         }
     };
 
-    if (family == CoreShapeFamily::MOLDED) {
+    // The letters a family must state; a missing one is a data error, never a zero-sized part.
+    auto letter = [&](const std::string& name) {
+        auto it = dimensions.find(name);
+        if (it == dimensions.end()) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "Painter: core shape " + shape.get_name().value_or("") + " has no dimension " + name);
+        }
+        return it->second;
+    };
+
+    if (family == CoreShapeFamily::ROD) {
+        // A cylinder of diameter A and length B, bored through by H when the shape gives one
+        // (the same reading as MKF's rod piece: no H, no bore).
+        double radius = letter("A") / 2;
+        double halfLength = letter("B") / 2;
+        double boreRadius = dimensions.count("H") ? dimensions.at("H") / 2 : 0;
+        addRectangle(boreRadius, radius, -halfLength, halfLength);
+    }
+    else if (family == CoreShapeFamily::DRUM_PLATE) {
+        // A rectangular drum and its lid, not a body of revolution: drawn whole, in the frame its coil is drawn in
+        // (vertical along the post axis, centred on it; x across the drum height B, centred on the post). The post F
+        // sits in the middle of B with the winding window (B - F) / 2 on either side (CorePieceDrumPlate), the two
+        // flanges D thick at the post's ends span all of B, and the lid J closes them on the +x side over its length K
+        // (A when not given).
+        double halfLength = letter("A") / 2;
+        double halfHeight = letter("B") / 2;
+        double postHalfHeight = letter("F") / 2;
+        double flangeThickness = letter("D");
+        double lidThickness = letter("J");
+        double lidHalfLength = dimensions.count("K") && dimensions.at("K") > 0 ? dimensions.at("K") / 2 : halfLength;
+        auto addBox = [&](double left, double right, double bottom, double top) {
+            std::vector<SVG::Point> points = {{left, bottom}, {right, bottom}, {right, top}, {left, top}};
+            shapes->add_child<SVG::Polygon>(scale_points(points, 0, _scale))->set_attr("class", "ferrite");
+        };
+        addBox(-postHalfHeight, postHalfHeight, -halfLength + flangeThickness, halfLength - flangeThickness);
+        addBox(-halfHeight, halfHeight, halfLength - flangeThickness, halfLength);
+        addBox(-halfHeight, halfHeight, -halfLength, -halfLength + flangeThickness);
+        addBox(halfHeight, halfHeight + lidThickness, -lidHalfLength, lidHalfLength);
+    }
+    else if (family == CoreShapeFamily::MOLDED) {
         // Post + two plates + return shell around the (empty-drawn) coil cavity.
         // Pot-core letters: D cavity height, E cavity OD, F post diameter.
         double bodyHalfWidth = dimensions["A"] / 2;

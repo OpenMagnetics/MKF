@@ -3,6 +3,7 @@
 #include "physical_models/InitialPermeability.h"
 #include <MAS.hpp>
 #include <array>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -27,6 +28,9 @@ struct CoreFluxDensityCell {
     // The cell's material, an index into the map's (and the waveform's) materials: 0 is the core's own; a drum's ring
     // or shell of another grade, or a moulded body's regions, have theirs.
     size_t materialIndex = 0;
+    // A moulded body's air region (a region with no material): it carries the flux at mu0 and dissipates nothing;
+    // materialIndex is not read for it.
+    bool air = false;
 };
 
 /**
@@ -113,9 +117,17 @@ struct CoreLossDensityMap {
  *    their area over their drawn width as depth, a bend between depths is mapped at the yoke's depth and stretched
  *    back, and the yoke's depth is the one whose linear map has MKF's effective le / Ae (an area-equivalent 2D map: the
  *    3D crowding where a round post meets a flat yoke is not resolved).
- *  - Moulded bodies, region by region in their own powders (no air region).
+ *  - Moulded bodies, region by region in their own powders; a region declared "air" (a coil on a plastic bobbin) carries
+ *    the flux at mu0 and dissipates nothing. Where a corner crosses from the post (or the shell) into a plate of
+ *    another material, each flux path through it runs through both, in series. The slices keep the uniform core's
+ *    equipotentials, which the boundary crosses obliquely, so there is no refraction: with a strong contrast (an air
+ *    post) the paths that dip furthest into the weaker material carry visibly less flux along the boundary, while
+ *    the corner's loss weighting moves only a few per cent.
  *  - The drum family (drum, rod, shielded and semi-shielded drum, drum with a plate) as MKF's drum model has it: a
- *    uniform post, radial flanges with B ~ 1/rho, the ring or shell axial in its own grade; no axial fall-off.
+ *    uniform post, radial flanges with B ~ 1/rho, the ring or shell axial in its own grade; no axial fall-off. The
+ *    corner where the post meets each flange is as deep as makes the map's reluctance MKF's drum constant (the ring
+ *    or shell left out: they keep their own straight geometry). A drum with a plate is one rectangular loop, its post
+ *    in the middle of the drum height, drawn in the frame its coil is drawn in.
  * Other cores throw.
  */
 class CoreMagneticFluxDensity {
@@ -124,12 +136,22 @@ class CoreMagneticFluxDensity {
     // for a gapped ring, the gap length in series with it. A region's end cut keeps lengthFraction of the path (0 when
     // it removes the path's cell entirely): the cut decides how much of the slice the region holds, not the field in
     // it, so the path's B comes from its whole length and only that fraction of the slice's MMF is the region's.
+    // A stretch of a path in one material (an index into the map's materials, or air).
+    struct Segment {
+        size_t materialIndex = 0;
+        bool air = false;
+        double length;
+    };
+    // A path whose segments are empty runs through its region's material over its whole length; otherwise its length
+    // is the sum of its segments', each read on its own material (a corner crossing a material boundary), and every
+    // cell of it is read on that cell's own material.
     struct Path {
         std::vector<size_t> cellIndexes;
         double length;
         double width;
         double gapLength = 0;
         double lengthFraction = 1;
+        std::vector<Segment> segments;
     };
     struct Slice {
         std::vector<Path> paths;
@@ -142,6 +164,8 @@ class CoreMagneticFluxDensity {
         double fluxShare;
         // The region's material (an index into the map's materials) and so its magnetisation curve.
         size_t materialIndex = 0;
+        // Air (a moulded body's region with no material): mu0, materialIndex not read.
+        bool air = false;
     };
 
   private:
@@ -179,6 +203,27 @@ class CoreMagneticFluxDensity {
                          double widthB, double cutA, double cutB, double depth, double fluxShare, double limbDepth);
 
     using Curve = InitialPermeability::MagnetisationCurve;
+    // Regions built while _currentAir is set are air, read on _airCurve (B = mu0 H).
+    bool _currentAir = false;
+    // A bend built while this is set takes it as the material of its limb a (y < 0 in the bend's own frame: the post or
+    // shell below a moulded body's plate) when it differs from the current one; the corner and limb b keep the current.
+    struct LimbMaterial {
+        size_t materialIndex = 0;
+        bool air = false;
+    };
+    std::optional<LimbMaterial> _currentLimbAMaterial;
+    std::shared_ptr<const Curve> _airCurve;
+    // While set, every region and segment is read as air: the linear map's purely geometric reluctance (calibration of a
+    // map whose paths cross materials, where no one permeability per region exists).
+    bool _geometricProbe = false;
+    const Curve& region_curve(const Region& region) const;
+    const Curve& material_curve(size_t materialIndex, bool air) const;
+    bool has_mixed_paths() const;
+    // The depth d at which the linear map's geometric factor sum(MMF mu / flux) over the regions `include` picks equals
+    // targetFactor: build(d) rebuilds the map, the bracket grows from startDepth by factors of 2 (up to 50 either way),
+    // then the secant on log(d) safeguarded by bisection. Throws when no depth in range reaches it. what: for messages.
+    void calibrate_depth(const std::function<void(double)>& build, double startDepth, double targetFactor,
+                         const std::function<bool(const Region&)>& include, const std::string& what);
     double field_strength(const Curve& curve, double fluxDensity) const;
     double flux_density(const Curve& curve, double fieldStrength) const;
     double incremental_permeability(const Curve& curve, double fieldStrength) const;
@@ -186,7 +231,12 @@ class CoreMagneticFluxDensity {
     double solve_slice(const Curve& curve, const Slice& slice, double sliceFlux, double depth, std::vector<double>& pathFluxDensities) const;
     // The drum family, as paint_drum_family_core draws it (an axisymmetric half section): drum, rod, shielded drum,
     // semi-shielded drum, drum with a plate.
-    void build_drum_family(Core core);
+    // cornerDepth: the depth of the post / flange corners (nullopt: pi times the post radius, the post's rim).
+    void build_drum_family(Core core, std::optional<double> cornerDepth = std::nullopt);
+    // A drum, shielded or semi-shielded drum: the post / flange corners' depth is the one whose linear map has the
+    // reluctance of MKF's drum (CorePiece shape constants, the drum's share for a ring or shell), the corner being where a
+    // 2D bend stands in for the axisymmetric one.
+    void calibrate_drum_family(Core core);
 
   public:
     /**

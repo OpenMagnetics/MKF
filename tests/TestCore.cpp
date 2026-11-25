@@ -3949,7 +3949,9 @@ TEST_CASE("Test_Core_Type_DrumPlate_Is_Piece_And_Plate", "[core][core-type][smok
     // And the column the bobbin is derived from is the POST, rectangular, not a round drum post.
     auto column = core.get_processed_description()->get_columns()[0];
     CHECK(column.get_shape() == ColumnShape::RECTANGULAR);
-    CHECK_THAT(column.get_width(), Catch::Matchers::WithinRel(0.00100, 0.001));
+    // F is the column's width (the house letter convention: its extent in the drawn section), G its depth.
+    CHECK_THAT(column.get_width(), Catch::Matchers::WithinRel(0.00030, 0.001));
+    CHECK_THAT(column.get_depth(), Catch::Matchers::WithinRel(0.00100, 0.001));
 }
 
 

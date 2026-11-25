@@ -3394,8 +3394,11 @@ class CorePieceDrumPlate : public CorePiece {
         // turn, the bobbin MKF derives as half this column plus the bobbin thickness.
         mainColumn.set_type(ColumnType::CENTRAL);
         mainColumn.set_shape(ColumnShape::RECTANGULAR);
-        mainColumn.set_width(roundFloat(postDepth(dimensions)));
-        mainColumn.set_depth(roundFloat(dimensions["F"]));
+        // The house letter convention: F is the column's width, its extent in the section the winding window and the
+        // Painter are drawn in (the post's height in B, where the window starts at F / 2); the post's depth into that
+        // section is its depth.
+        mainColumn.set_width(roundFloat(dimensions["F"]));
+        mainColumn.set_depth(roundFloat(postDepth(dimensions)));
         mainColumn.set_height(roundFloat(windowLength(dimensions)));
         mainColumn.set_area(roundFloat(postDepth(dimensions) * dimensions["F"]));
         mainColumn.set_coordinates({0, 0, 0});
@@ -3412,8 +3415,10 @@ class CorePieceDrumPlate : public CorePiece {
         double flangeArea = dimensions["C"] * dimensions["D"];
         double lidArea = lidDepth(dimensions) * dimensions["J"];
         // From the post's mid-height up to the middle of the lid: the length the flux travels in
-        // each flange before it turns into the lid.
-        double flangeRun = dimensions["B"] - dimensions["F"] / 2 + dimensions["J"] / 2;
+        // each flange before it turns into the lid. The post sits in the middle of the drum height B
+        // (the winding window is (B - F) / 2 on either side of it, the wire wraps all round), so its
+        // mid-height is B / 2 and the lid's middle B + J / 2.
+        double flangeRun = dimensions["B"] / 2 + dimensions["J"] / 2;
 
         std::vector<double> areas = {postArea, flangeArea, lidArea};
         double c1 = window / postArea;
