@@ -7800,6 +7800,10 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             const auto& entry = found->second;
             listedFrequencies.push_back(entry.frequency);
             if (entry.amplitude == 0) {
+                // Listed as exactly zero: it carries no current, but the field and loss models still resolve this harmonic
+                // (a DC-only operating point lists its whole AC grid at 0 A), so it gets the zero split, like ABT #1880's.
+                anyZeroHarmonic = true;
+                zeroHarmonicPerWinding[windingIndex] = true;
                 continue;
             }
             auto phasor = WaveformProcessor::calculate_harmonic_phasor(series_of(windingIndex), excitations[windingIndex].get_frequency(), entry.frequency);
