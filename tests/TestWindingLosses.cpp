@@ -6425,3 +6425,44 @@ TEST_CASE("Width cells: a flat-wire arc on a toroid loses the same at mirrored t
     }
     settings.reset();
 }
+
+// ABT #2562 (web user report, "Parallel current split" in Coil Info): every flat turn is resolved into width cells through
+// the parallel current split, even with one parallel. A DC-only operating point lists its whole AC harmonic grid at exactly
+// 0 A; the split skipped those harmonics ("no winding carries this harmonic") while the field still resolved them, so
+// the losses threw "Parallel current split: no split was solved at 45000 Hz". A DC current has no AC losses: the
+// winding losses are the ohmic ones.
+TEST_CASE("Test_Winding_Losses_Rectangular_Wire_DC_Only_Operating_Point", "[physical-model][winding-losses][rectangular][abt2562]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+
+    std::vector<int64_t> numberTurns = {18};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "E 42/21/20";
+    std::vector<OpenMagnetics::Wire> wires;
+    wires.push_back(OpenMagnetics::find_wire_by_name("Rectangular 2.50x1.18 - Grade 1"));
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName, 1,
+                                                    MAS::WindingOrientation::OVERLAPPING,
+                                                    MAS::WindingOrientation::OVERLAPPING,
+                                                    MAS::CoilAlignment::CENTERED,
+                                                    MAS::CoilAlignment::CENTERED,
+                                                    wires, true);
+    coil.wind();
+    REQUIRE(coil.get_turns_description());
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, OpenMagneticsTesting::get_residual_gap(), 1, "N97");
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    double temperature = 25;
+    // A flat 10 A: sinusoidal label with no peak-to-peak, the shape the web sends for a DC-only point.
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(45000, 1e-3, temperature, WaveformLabel::SINUSOIDAL, 0, 0.5, 10);
+    auto operatingPoint = inputs.get_operating_point(0);
+
+    WindingLossesOutput losses;
+    REQUIRE_NOTHROW(losses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, operatingPoint, temperature));
+    auto ohmic = OpenMagnetics::WindingOhmicLosses::calculate_ohmic_losses(magnetic.get_coil(), operatingPoint, temperature);
+    CHECK(losses.get_winding_losses() > 0);
+    CHECK_THAT(losses.get_winding_losses(), Catch::Matchers::WithinRel(ohmic.get_winding_losses(), 1e-6));
+
+    settings.reset();
+}
