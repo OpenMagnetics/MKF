@@ -475,6 +475,88 @@ double row_end_segment_box_distance(const RowEndPoint& p, const RowEndPoint& q, 
     return std::min(deepest, 0.0);
 }
 }  // namespace
+
+// ABT #2546: THE PITCH OF A FLATTENED LITZ TURN ROUND A TOROID RING. A litz bundle the wind flattened
+// (Wire::set_wound_footprint) is an OVAL -- a stadium: the segment between its two arc centres swept
+// by half its short side -- of its footprint's width radially (along the turn's rotation) and height
+// tangentially. A ring used to pitch it like a round turn, by its height at the ring's centre radius,
+// but an oval longer radially reaches nearer the axis, where the ring is narrower: on T 34/21.8/15 with
+// 57 turns of Litz 15x0.5 flattened to 3.157 x 2.005 mm the innermost ring (centres at 3.007 mm, pitch
+// 38.95 deg) had 0.953 mm between the turns' inner ends and they overlapped by 0.38 mm. Two such ovals
+// on rays theta apart are nearest at their inner arc centres when the long side is radial (the foot
+// of either on the other ray falls inside the axis), and at their facing arc centres when it is
+// tangential, so the pitch is the angle that puts those points a short side apart. Returns degrees,
+// or wound_distance_to_angle's 360 does-not-fit sentinel when no angle does.
+static bool is_flattened_litz(const OpenMagnetics::Wire& wire) {
+    return wire.get_type() == WireType::LITZ && wire.get_wound_footprint().has_value();
+}
+
+static double flattened_litz_ring_pitch_angle(const OpenMagnetics::Wire& wire, double centreRadius) {
+    const auto [width, height] = wire.get_wound_footprint().value();
+    if (!(width > 0) || !(height > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
+            "flattened_litz_ring_pitch_angle: the wound footprint of the litz measures " + std::to_string(width) + " x " +
+            std::to_string(height) + " m");
+    }
+    const double shortSide = std::min(width, height);
+    const double half = 0.5 * (std::max(width, height) - shortSide);
+    if (width >= height) {
+        const double innerRadius = centreRadius - half;
+        if (!(innerRadius > 0)) {
+            return 360;
+        }
+        return wound_distance_to_angle(shortSide, innerRadius);
+    }
+    if (!(centreRadius > 0)) {
+        return 360;
+    }
+    const double gap = wound_distance_to_angle(shortSide, std::hypot(centreRadius, half));
+    if (gap >= 360) {
+        return 360;
+    }
+    return 2 * std::atan2(half, centreRadius) * 180 / std::numbers::pi + gap;
+}
+
+// ABT #2546: THE RADIAL THICKNESS OF A TOROID BORE RING. A ring is as thick as its wire is wide, and
+// its turns sit at its middle -- except a flattened litz oval longer tangentially than radially: its
+// straight side is a chord, so its two ends lie at hypot(r, half) from the axis, beyond its centre
+// radius r, and stacked a short side apart its ends reached into the ring outside it (and the outermost
+// ring's into the core): 0.095 mm on T 34/21.8/15 with 57 turns of Litz 15x0.5 at 1.926 x 3.252 mm.
+// Such a ring takes its short side plus, on each side, e = hypot(r, half) - r, so its outline stays
+// inside it whatever the turns of the next ring do; with r = outerRadius - shortSide / 2 - e that is
+// e = (B - rho) - sqrt((B - rho)^2 - half^2), B its outer radius (from the axis) and rho half its short
+// side. Every other wire keeps its width. Infinity when the oval cannot sit inside B at all.
+static double toroidal_ring_thickness(const OpenMagnetics::Wire& wire, double ringOuterRadius) {
+    if (!is_flattened_litz(wire)) {
+        return wire.get_maximum_outer_width();
+    }
+    const auto [width, height] = wire.get_wound_footprint().value();
+    if (width >= height) {
+        return width;
+    }
+    const double rho = width / 2;
+    const double half = (height - width) / 2;
+    const double reach = ringOuterRadius - rho;
+    if (!(reach > half)) {
+        return std::numeric_limits<double>::infinity();
+    }
+    const double e = reach - std::sqrt(reach * reach - half * half);
+    return width + 2 * e;
+}
+
+// The radial depth of `rings` bore rings stacked inward from ringsOuterRadius (from the axis), each
+// toroidal_ring_thickness thick: rings x width for every wire but a tangentially long flattened litz.
+static double toroidal_rings_depth(const OpenMagnetics::Wire& wire, double ringsOuterRadius, size_t rings) {
+    if (!is_flattened_litz(wire)) {
+        return rings * wire.get_maximum_outer_width();
+    }
+    double outer = ringsOuterRadius;
+    for (size_t ring = 0; ring < rings; ++ring) {
+        outer -= toroidal_ring_thickness(wire, outer);
+    }
+    return ringsOuterRadius - outer;
+}
+
 // FIX H-COIL-2: Helper to safely compute equal proportion per winding
 static inline std::vector<double> make_equal_proportion_per_winding(size_t numWindings) {
     if (numWindings == 0) {
@@ -12976,7 +13058,9 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
                 double radius = ringRadius.at(space.layer);
                 double markerHalfAngle = wound_distance_to_angle(space.dimensions[1], radius) / 2;
                 size_t ringWindingIndex = get_winding_index_by_name(turns[ringTurnIndexes.at(space.layer)[0]].get_winding());
-                double turnHalfAngle = wound_distance_to_angle(wires[ringWindingIndex].get_maximum_outer_height(), radius) / 2;
+                double turnHalfAngle = (is_flattened_litz(wires[ringWindingIndex])
+                                            ? flattened_litz_ring_pitch_angle(wires[ringWindingIndex], radius)
+                                            : wound_distance_to_angle(wires[ringWindingIndex].get_maximum_outer_height(), radius)) / 2;
                 if (markerHalfAngle >= 180 || turnHalfAngle >= 180) {
                     continue;  // wound_distance_to_angle's does-not-fit sentinel — nothing sane to block
                 }
@@ -13066,7 +13150,9 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
                 corridorsFound != corridorsPerRing.end() ? corridorsFound->second : kNoCorridors;
             double radius = ringRadius.at(ringName);
             size_t ringWindingIndex = get_winding_index_by_name(turns[turnIdxs[0]].get_winding());
-            double turnPitchAngle = wound_distance_to_angle(wires[ringWindingIndex].get_maximum_outer_height(), radius);
+            double turnPitchAngle = is_flattened_litz(wires[ringWindingIndex])
+                                        ? flattened_litz_ring_pitch_angle(wires[ringWindingIndex], radius)   // ABT #2546
+                                        : wound_distance_to_angle(wires[ringWindingIndex].get_maximum_outer_height(), radius);
             // ABT #1818: a turn moved OUT of a corridor is stored on the 1 nm cartesian grid
             // (roundFloat 9), which shifts it by up to 0.71 nm of arc: 1e-5 deg on a 4 mm ring. A
             // target 1e-6 deg past the corridor edge therefore reads back INSIDE the corridor. The
@@ -18869,6 +18955,16 @@ std::pair<size_t, std::vector<int64_t>> get_number_layers_needed_and_number_phys
     else {
         currentRadius = windingWindowRadius - wireWidth / 2 - currentRadialHeight;
     }
+    // ABT #2546: a flattened litz ring is as thick as toroidal_ring_thickness, its turns at its middle.
+    const bool flattenedLitz = is_flattened_litz(wire);
+    double ringOuterRadius = windingWindowRadius - currentRadialHeight;
+    auto flattenedRingCentre = [&]() {
+        const double thickness = toroidal_ring_thickness(wire, ringOuterRadius);
+        return std::isfinite(thickness) ? ringOuterRadius - thickness / 2 : 0.0;
+    };
+    if (flattenedLitz) {
+        currentRadius = flattenedRingCentre();
+    }
     double sectionAvailableAngle = angle;
     std::vector<int64_t> layerPhysicalTurns;
     size_t numberLayers = 0;
@@ -18881,7 +18977,10 @@ std::pair<size_t, std::vector<int64_t>> get_number_layers_needed_and_number_phys
         // turns, and laid them 143.8 deg apart over 575 deg: three bore crossings overlapped by 1.4 mm.
         // No turn goes round a ring at or past the centre (the stack-depth check of
         // wind_by_round_sections refuses such a stack).
-        double wireAngle = currentRadius > 0 ? wound_distance_to_angle(wireHeight, currentRadius) : 360;
+        // ABT #2546: a flattened litz oval by its own pitch (flattened_litz_ring_pitch_angle), as it is laid.
+        double wireAngle = currentRadius > 0 ? (is_flattened_litz(wire) ? flattened_litz_ring_pitch_angle(wire, currentRadius)
+                                                                        : wound_distance_to_angle(wireHeight, currentRadius))
+                                             : 360;
         // ABT #187: connection leads crossing this ring block angular turn slots (real winding
         // geometry) — the ring holds that many fewer turns, spilling them inward to the next ring.
         int64_t blockedSlots = (blockedSlotsPerLayer != nullptr && numberLayers < blockedSlotsPerLayer->size())
@@ -18891,7 +18990,11 @@ std::pair<size_t, std::vector<int64_t>> get_number_layers_needed_and_number_phys
 
         layerPhysicalTurns.push_back(numberTurnsFittingThisLayer);
         numberLayers++;
-        if (currentRadius > wireWidth) {
+        if (flattenedLitz) {
+            ringOuterRadius -= toroidal_ring_thickness(wire, ringOuterRadius);
+            currentRadius = std::isfinite(ringOuterRadius) ? flattenedRingCentre() : 0.0;
+        }
+        else if (currentRadius > wireWidth) {
             currentRadius -= wireWidth;
         }
     }
@@ -18969,7 +19072,11 @@ static ToroidalBarRingCapacities toroidal_bar_ring_capacities(double startRadial
     rings << std::fixed << std::setprecision(3);
     int64_t remaining = physicalTurnsInSection;
     for (size_t ring = 0; remaining > 0; ++ring) {
-        const double centreRadius = windingWindowRadius - startRadialHeight - (double(ring) + 0.5) * wireWidth;
+        // ABT #2546: a flattened litz ring is toroidal_ring_thickness thick, its turns at its middle.
+        const double centreRadius = is_flattened_litz(wire)
+            ? windingWindowRadius - startRadialHeight - toroidal_rings_depth(wire, windingWindowRadius - startRadialHeight, ring) -
+                  toroidal_ring_thickness(wire, windingWindowRadius - startRadialHeight - toroidal_rings_depth(wire, windingWindowRadius - startRadialHeight, ring)) / 2
+            : windingWindowRadius - startRadialHeight - (double(ring) + 0.5) * wireWidth;
         rings << (ring == 0 ? "" : "; ") << "ring " << ring + 1 << " (turn centres at " << centreRadius * 1e3 << " mm) ";
         bool room = centreRadius > 0;
         for (double margin : margins) {
@@ -18983,7 +19090,8 @@ static ToroidalBarRingCapacities toroidal_bar_ring_capacities(double startRadial
         const double available = boundarySpan - Coil::toroidal_bar_margin_angle(margins[0], centreRadius, wire)
                                               - Coil::toroidal_bar_margin_angle(margins[1], centreRadius, wire);
         const double pitchRadius = wire.get_type() == WireType::RECTANGULAR ? centreRadius - wireWidth / 2 : centreRadius;
-        const double pitch = wound_distance_to_angle(wireHeight, pitchRadius);
+        const double pitch = is_flattened_litz(wire) ? flattened_litz_ring_pitch_angle(wire, centreRadius)
+                                                     : wound_distance_to_angle(wireHeight, pitchRadius);   // ABT #2546
         const int64_t blockedSlots = (blockedSlotsPerLayer != nullptr && ring < blockedSlotsPerLayer->size()) ? (*blockedSlotsPerLayer)[ring] : 0;
         // Turns whose centres fit between the faces: n turns take n pitches of angle, since the
         // first and last each sit half a pitch plus the bar's angle inside their boundary.
@@ -23473,6 +23581,11 @@ std::vector<double> Coil::get_contiguous_toroid_proportion_per_winding_by_needed
         double wireHeight;
         double firstRingRadius;
         size_t maximumRings;
+        std::optional<Wire> flattenedLitz;   // ABT #2546: pitched by flattened_litz_ring_pitch_angle
+        // ABT #2546: a flattened litz's rings (toroidal_ring_thickness): each one's centre radius and
+        // the depth of the stack down to its inner side.
+        std::vector<double> flattenedRingCentres;
+        std::vector<double> flattenedRingDepths;
     };
     std::vector<WindingNeed> needs(numberWindings);
     std::vector<double> depthCandidates;
@@ -23497,10 +23610,35 @@ std::vector<double> Coil::get_contiguous_toroid_proportion_per_winding_by_needed
         need.physicalTurnsPerSection = int64_t(turnsPerSection) * int64_t(get_number_parallels(windingIndex));
         need.corridorSlots = int64_t(get_number_parallels(windingIndex)) + 1;
         need.firstRingRadius = windowRadius - (wire.get_type() == WireType::RECTANGULAR ? need.wireWidth : need.wireWidth / 2);
+        if (is_flattened_litz(wire)) {
+            need.flattenedLitz = wire;
+        }
         // The deepest stack the window takes (wind_by_round_sections refuses a deeper one).
+        if (need.flattenedLitz) {
+            double outer = windowRadius;
+            while (true) {
+                const double thickness = toroidal_ring_thickness(wire, outer);
+                if (!std::isfinite(thickness) || outer - thickness < -windowRadius * 1e-9) {
+                    break;
+                }
+                need.flattenedRingCentres.push_back(outer - thickness / 2);
+                outer -= thickness;
+                need.flattenedRingDepths.push_back(windowRadius - outer);
+            }
+            need.maximumRings = std::max<size_t>(1, need.flattenedRingDepths.size());
+            if (need.flattenedRingDepths.empty()) {
+                need.flattenedRingCentres.push_back(0);
+                need.flattenedRingDepths.push_back(std::numeric_limits<double>::infinity());
+            }
+            for (double ringDepth : need.flattenedRingDepths) {
+                depthCandidates.push_back(ringDepth);
+            }
+        }
+        else {
         need.maximumRings = std::max<size_t>(1, size_t(std::floor(windowRadius / need.wireWidth * (1 + 1e-9))));
         for (size_t rings = 1; rings <= need.maximumRings; ++rings) {
             depthCandidates.push_back(double(rings) * need.wireWidth);
+        }
         }
         needs[windingIndex] = need;
     }
@@ -23520,7 +23658,11 @@ std::vector<double> Coil::get_contiguous_toroid_proportion_per_winding_by_needed
         int64_t held = 0;
         for (size_t ring = 0; ring < rings; ++ring) {
             // At the ring's own radius, as get_number_layers_needed_and_number_physical_turns counts it (ABT #2512).
-            double wireAngle = wound_distance_to_angle(need.wireHeight, radius);
+            if (need.flattenedLitz) {
+                radius = need.flattenedRingCentres[std::min(ring, need.flattenedRingCentres.size() - 1)];
+            }
+            double wireAngle = need.flattenedLitz ? (radius > 0 ? flattened_litz_ring_pitch_angle(need.flattenedLitz.value(), radius) : 360)
+                                                  : wound_distance_to_angle(need.wireHeight, radius);
             int64_t blocked = ring >= 1 ? need.corridorSlots : 0;
             held += int64_t(std::max(0.0, whole_fits(angle, wireAngle) - double(blocked)));
             if (radius > need.wireWidth) {
@@ -23559,6 +23701,10 @@ std::vector<double> Coil::get_contiguous_toroid_proportion_per_winding_by_needed
             }
             const auto& need = needs[windingIndex];
             size_t rings = std::min(need.maximumRings, size_t(std::floor(depth / need.wireWidth * (1 + 1e-9))));
+            if (need.flattenedLitz) {   // ABT #2546: the rings whose stack fits the depth
+                rings = size_t(std::count_if(need.flattenedRingDepths.begin(), need.flattenedRingDepths.end(),
+                                             [&](double ringDepth) { return ringDepth <= depth * (1 + 1e-9); }));
+            }
             if (rings == 0) {
                 everyWindingHasARing = false;
                 break;
@@ -23744,7 +23890,8 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
                 if (windingOrientation == WindingOrientation::OVERLAPPING) {
                     auto aux = get_number_layers_needed_and_number_physical_turns(currentSectionCenterRadialHeight + _marginsPerSection[marginIndex][0], currentSectionAngle, wirePerWinding[windingIndex], physicalTurnsThisSection, availableRadialHeight, blockedSlotsPointer);
                     numberLayers = aux.first;
-                    currentSectionRadialHeight = numberLayers * wirePerWinding[windingIndex].get_maximum_outer_width();
+                    currentSectionRadialHeight = toroidal_rings_depth(wirePerWinding[windingIndex],   // ABT #2546
+                        availableRadialHeight - currentSectionCenterRadialHeight - _marginsPerSection[marginIndex][0], numberLayers);
 
                     if (_insulationInterLayers.contains(windingIndex)) {
                         auto insulationLayer = _insulationInterLayers[windingIndex];
@@ -23784,7 +23931,7 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
                     marginAngle0 = toroidal_bar_margin_angle(_marginsPerSection[marginIndex][0], outermostRingRadius, wirePerWinding[windingIndex]);
                     marginAngle1 = toroidal_bar_margin_angle(_marginsPerSection[marginIndex][1], outermostRingRadius, wirePerWinding[windingIndex]);
                     if (_strict) {
-                        currentSectionRadialHeight = numberLayers * wireWidth;
+                        currentSectionRadialHeight = toroidal_rings_depth(wirePerWinding[windingIndex], availableRadialHeight - currentSectionCenterRadialHeight, numberLayers);
                     }
                     currentSectionAngle -= marginAngle0 + marginAngle1;
                 }
@@ -23792,7 +23939,7 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
                     auto aux = get_number_layers_needed_and_number_physical_turns(currentSectionCenterRadialHeight, currentSectionAngle, wirePerWinding[windingIndex], physicalTurnsThisSection, availableRadialHeight, blockedSlotsPointer);
                     numberLayers = aux.first;
                     if (_strict) {
-                        currentSectionRadialHeight = numberLayers * wirePerWinding[windingIndex].get_maximum_outer_width();
+                        currentSectionRadialHeight = toroidal_rings_depth(wirePerWinding[windingIndex], availableRadialHeight - currentSectionCenterRadialHeight, numberLayers);
                     }
                 }
 
@@ -23811,7 +23958,25 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
                         : currentSectionCenterRadialHeight;
                     const double stackDepth = windingOrientation == WindingOrientation::OVERLAPPING
                         ? currentSectionRadialHeight
-                        : numberLayers * wireWidth;
+                        : toroidal_rings_depth(wirePerWinding[windingIndex], availableRadialHeight - stackStart, numberLayers);   // ABT #2546
+                    if (!std::isfinite(stackDepth)) {
+                        // ABT #2546: a tangentially long flattened litz oval's ring has no finite thickness
+                        // once the radius left for it is too short for the oval to sit inside it
+                        // (toroidal_ring_thickness): say which ring has no room instead of "inf mm deep".
+                        size_t ringsWithRoom = 0;
+                        while (ringsWithRoom < numberLayers &&
+                               std::isfinite(toroidal_rings_depth(wirePerWinding[windingIndex], availableRadialHeight - stackStart, ringsWithRoom + 1))) {
+                            ++ringsWithRoom;
+                        }
+                        std::ostringstream reason;
+                        reason << "winding '" << get_name(windingIndex) << "' does not fit its round winding window: "
+                               << physicalTurnsThisSection << " turns of a " << wireWidth * 1e3 << " mm wire need "
+                               << numberLayers << " rings, but ring " << ringsWithRoom + 1
+                               << " has no room left for the flattened litz in a window of "
+                               << availableRadialHeight * 1e3 << " mm radial height";
+                        _lastFitFailure = reason.str();
+                        return false;
+                    }
                     if (stackStart + stackDepth > availableRadialHeight * (1 + 1e-9)) {
                         std::ostringstream reason;
                         reason << "winding '" << get_name(windingIndex) << "' does not fit its round winding window: "
@@ -25261,6 +25426,17 @@ bool Coil::wind_by_round_layers() {
                     double averageLayerPerimeter = 2 * std::numbers::pi * (sections[sectionIndex].get_dimensions()[1] / 360) * (windingWindowRadialHeight - sections[sectionIndex].get_coordinates()[0]);
                     maximumNumberPhysicalTurnsPerLayer = whole_fits(averageLayerPerimeter, wireHeight);
                     layerRadialHeight = wireWidth;
+                    if (is_flattened_litz(wirePerWinding[windingIndex])) {
+                        // ABT #2546: its rings are toroidal_ring_thickness thick, the first from the section's outer side.
+                        const double sectionOuterRadius = windingWindowRadialHeight - (sections[sectionIndex].get_coordinates()[0] - sections[sectionIndex].get_dimensions()[0] / 2);
+                        layerRadialHeight = toroidal_ring_thickness(wirePerWinding[windingIndex], sectionOuterRadius);
+                        size_t ringsFitting = 0;
+                        while (toroidal_rings_depth(wirePerWinding[windingIndex], sectionOuterRadius, ringsFitting + 1) <=
+                               sections[sectionIndex].get_dimensions()[0] * (1 + 1e-9)) {
+                            ++ringsFitting;
+                        }
+                        maximumNumberLayersFittingInSection = ringsFitting;
+                    }
                     layerAngle = sections[sectionIndex].get_dimensions()[1];
                 } else {
                     throw std::invalid_argument("Only overlapping layers allowed in toroids");
@@ -25515,6 +25691,10 @@ bool Coil::wind_by_round_layers() {
 
                 }
 
+                if (is_flattened_litz(wirePerWinding[windingIndex])) {
+                    // ABT #2546: the next ring's own thickness, from its outer side (here).
+                    layerRadialHeight = toroidal_ring_thickness(wirePerWinding[windingIndex], windingWindowRadialHeight - currentLayerCenterRadialHeight);
+                }
                 if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING) {
                     currentLayerCenterRadialHeight = roundFloat(currentLayerCenterRadialHeight + layerRadialHeight / 2, 9);
                 }
@@ -26484,7 +26664,10 @@ bool Coil::wind_by_round_turns() {
             else {
                 wireRadius = windingWindowRadialHeight - layer.get_coordinates()[0];
             }
-            double wireAngle = wound_distance_to_angle(wireHeight, wireRadius);
+            // ABT #2546: a flattened litz oval pitches by where it reaches nearest its neighbours.
+            double wireAngle = is_flattened_litz(wirePerWinding[windingIndex])
+                                   ? flattened_litz_ring_pitch_angle(wirePerWinding[windingIndex], wireRadius)
+                                   : wound_distance_to_angle(wireHeight, wireRadius);
             // Physically-impossible placement is never a valid "loose fit": a
             // non-positive winding radius means the layer sits at or past the
             // toroid centre, and wireAngle > 180 (or NaN) means a single turn's
@@ -27115,6 +27298,186 @@ bool Coil::wind_by_planar_turns(double borderToWireDistance, std::map<size_t, do
     return true;
 }
 
+namespace {
+// ABT #2546: THE OUTER CROSSINGS OF A TOROID PACK BY THEIR REAL CROSS-SECTION. They used to be
+// packed and checked as circles of the wire's outer HEIGHT (its tangential size). A flattened
+// litz turn is an OVAL wider radially (dimensions[0], along the turn's rotation) than
+// tangentially, so later outer layers stepped out by the height while the conductor is the width
+// deep: on T 34/21.8/15 with 57 turns of Litz 15x0.5 flattened to 3.157 x 2.005 mm the outer
+// crossings of turns 38 and 52 overlapped by 1.22 mm. The bore side and the first outer ring were
+// already placed by the width; this makes every later ring consistent with them.
+//
+// A crossing's outline, in the toroid's cartesian frame around its own centre, is a convex CORE
+// swept by a disk of RADIUS: a round turn is a point and its radius, an oval (a stadium, the
+// outline turn_station_outlines judges) the segment between its two arc centres and half its short
+// side, a rectangle its four corners and no radius. The outline keeps its turn's rotation, as the
+// copper-overlap judge and the stored turn do.
+struct CrossingOutline {
+    std::vector<std::array<double, 2>> core;
+    double radius = 0;
+};
+
+CrossingOutline crossing_outline(TurnCrossSectionalShape shape, double width, double height, double rotationDegrees) {
+    CrossingOutline outline;
+    const double angle = rotationDegrees * std::numbers::pi / 180;
+    const double c = std::cos(angle), s = std::sin(angle);
+    auto rotated = [&](double x, double y) { return std::array<double, 2>{c * x - s * y, s * x + c * y}; };
+    switch (shape) {
+        case TurnCrossSectionalShape::ROUND:
+            outline.core = {{0, 0}};
+            outline.radius = width / 2;
+            break;
+        case TurnCrossSectionalShape::OVAL: {
+            const double radius = 0.5 * std::min(width, height);
+            const double half = 0.5 * std::max(width, height) - radius;
+            outline.radius = radius;
+            if (width >= height) {
+                outline.core = {rotated(half, 0), rotated(-half, 0)};
+            }
+            else {
+                outline.core = {rotated(0, half), rotated(0, -half)};
+            }
+            break;
+        }
+        case TurnCrossSectionalShape::RECTANGULAR:
+            outline.core = {rotated(-width / 2, -height / 2), rotated(width / 2, -height / 2),
+                            rotated(width / 2, height / 2), rotated(-width / 2, height / 2)};
+            outline.radius = 0;
+            break;
+    }
+    return outline;
+}
+
+// The set of centre offsets (candidate centre - placed centre) at which two crossings touch: the
+// Minkowski sum of their two cores (a convex hull, counter-clockwise; one point or two when it
+// degenerates) swept by the sum of their radii plus `bias`.
+struct CrossingContact {
+    std::vector<std::array<double, 2>> hull;
+    double reach = 0;
+};
+
+CrossingContact crossing_contact(const CrossingOutline& candidate, const CrossingOutline& placed, double bias) {
+    std::vector<std::array<double, 2>> points;
+    for (const auto& a : candidate.core) {
+        for (const auto& b : placed.core) {
+            // The placed outline is point-symmetric, so its reflection is itself.
+            points.push_back({a[0] + b[0], a[1] + b[1]});
+        }
+    }
+    std::sort(points.begin(), points.end());
+    points.erase(std::unique(points.begin(), points.end()), points.end());
+    CrossingContact contact;
+    contact.reach = candidate.radius + placed.radius + bias;
+    if (points.size() <= 2) {
+        contact.hull = points;
+        return contact;
+    }
+    auto cross = [](const std::array<double, 2>& o, const std::array<double, 2>& a, const std::array<double, 2>& b) {
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    };
+    std::vector<std::array<double, 2>> hull(2 * points.size());
+    size_t k = 0;
+    for (size_t i = 0; i < points.size(); ++i) {
+        while (k >= 2 && cross(hull[k - 2], hull[k - 1], points[i]) <= 0) {
+            --k;
+        }
+        hull[k++] = points[i];
+    }
+    for (size_t i = points.size() - 1, lower = k + 1; i > 0; --i) {
+        while (k >= lower && cross(hull[k - 2], hull[k - 1], points[i - 1]) <= 0) {
+            --k;
+        }
+        hull[k++] = points[i - 1];
+    }
+    hull.resize(k - 1);
+    contact.hull = hull;
+    return contact;
+}
+
+// Distance from the offset (x, y) to the contact hull: 0 inside it.
+double distance_to_contact_hull(const CrossingContact& contact, double x, double y) {
+    const auto& hull = contact.hull;
+    if (hull.size() == 1) {
+        return std::hypot(x - hull[0][0], y - hull[0][1]);
+    }
+    if (hull.size() >= 3) {
+        bool inside = true;
+        for (size_t i = 0; i < hull.size(); ++i) {
+            const auto& p = hull[i];
+            const auto& q = hull[(i + 1) % hull.size()];
+            if ((q[0] - p[0]) * (y - p[1]) - (q[1] - p[1]) * (x - p[0]) < 0) {
+                inside = false;
+                break;
+            }
+        }
+        if (inside) {
+            return 0;
+        }
+    }
+    double nearest = std::numeric_limits<double>::max();
+    const size_t edges = hull.size() == 2 ? 1 : hull.size();
+    for (size_t i = 0; i < edges; ++i) {
+        const auto& p = hull[i];
+        const auto& q = hull[(i + 1) % hull.size()];
+        const double ex = q[0] - p[0], ey = q[1] - p[1];
+        const double length2 = ex * ex + ey * ey;
+        const double t = length2 > 0 ? std::clamp(((x - p[0]) * ex + (y - p[1]) * ey) / length2, 0.0, 1.0) : 0.0;
+        nearest = std::min(nearest, std::hypot(x - p[0] - t * ex, y - p[1] - t * ey));
+    }
+    return nearest;
+}
+
+// The farthest radius t along the ray t * (ux, uy) from the toroid's centre (unit direction) at which
+// a candidate still touches the placed crossing centred at (px, py), or nothing when the ray never
+// comes within reach. The touching set is convex, so its far boundary lies on one of the capsules
+// (hull edge swept by the reach) or, for a one-point hull, on the disk.
+std::optional<double> crossing_contact_ray_exit(const CrossingContact& contact, double px, double py, double ux, double uy) {
+    std::optional<double> farthest;
+    auto consider = [&](double t) {
+        if (!farthest || t > farthest.value()) {
+            farthest = t;
+        }
+    };
+    const double reach = contact.reach;
+    auto disk = [&](const std::array<double, 2>& centre) {
+        const double cx = px + centre[0], cy = py + centre[1];
+        const double along = cx * ux + cy * uy;
+        const double discriminant = reach * reach - (cx * cx + cy * cy - along * along);
+        if (discriminant > 0) {
+            consider(along + std::sqrt(discriminant));
+        }
+    };
+    const auto& hull = contact.hull;
+    for (const auto& vertex : hull) {
+        disk(vertex);
+    }
+    const size_t edges = hull.size() < 2 ? 0 : (hull.size() == 2 ? 1 : hull.size());
+    for (size_t i = 0; i < edges; ++i) {
+        const auto& p = hull[i];
+        const auto& q = hull[(i + 1) % hull.size()];
+        const double length = std::hypot(q[0] - p[0], q[1] - p[1]);
+        if (length == 0) {
+            continue;
+        }
+        const double ex = (q[0] - p[0]) / length, ey = (q[1] - p[1]) / length;
+        const double nx = -ey, ny = ex;
+        const double ax = px + p[0], ay = py + p[1];
+        const double normalSpeed = nx * ux + ny * uy;
+        if (normalSpeed == 0) {
+            continue;
+        }
+        for (double side : {1.0, -1.0}) {
+            const double t = (side * reach + nx * ax + ny * ay) / normalSpeed;
+            const double along = (t * ux - ax) * ex + (t * uy - ay) * ey;
+            if (along >= 0 && along <= length) {
+                consider(t);
+            }
+        }
+    }
+    return farthest;
+}
+}  // namespace
+
 std::vector<std::pair<double, std::vector<double>>> Coil::get_collision_distances(const std::vector<double>& turnCoordinates, const std::vector<std::vector<double>>& placedTurnsCoordinates, double wireHeight) {
     std::vector<std::pair<double, std::vector<double>>> collisions;
     auto turnCartesianCoordinates = polar_to_cartesian(turnCoordinates);
@@ -27231,9 +27594,12 @@ bool Coil::wind_toroidal_additional_turns() {
     // PER PAIR: neighbouring sections can carry different wires, so two crossings touch at half the
     // sum of their two wire heights. Overlapping sections stack radially, each on its own base
     // radius, and the classic wind keeps its placement: both are left as they were.
+    // ABT #2546: and its outline, so the pair packs by the two real cross-sections.
     struct OtherSectionCrossing {
         std::vector<double> coordinates;
         double wireHeight;
+        bool round;
+        CrossingOutline outline;
     };
     std::vector<OtherSectionCrossing> otherSectionsCrossings;
     std::vector<OtherSectionCrossing> currentSectionCrossings;
@@ -27243,6 +27609,9 @@ bool Coil::wind_toroidal_additional_turns() {
     for (auto section : sections) { 
         if (section.get_type() == ElectricalType::CONDUCTION) {
             std::vector<std::vector<double>> placedTurnsCoordinates;
+            // ABT #2546: the outline of each placed crossing, parallel to placedTurnsCoordinates.
+            std::vector<CrossingOutline> placedTurnsOutlines;
+            std::vector<bool> placedTurnsRound;
             otherSectionsCrossings.insert(otherSectionsCrossings.end(), currentSectionCrossings.begin(), currentSectionCrossings.end());
             currentSectionCrossings.clear();
             if (!turnsBySection) {
@@ -27254,6 +27623,47 @@ bool Coil::wind_toroidal_additional_turns() {
             auto windingIndex = get_winding_index_by_name(partialWinding.get_winding());
             // double wireWidth = wirePerWinding[windingIndex].get_maximum_outer_width();
             double wireHeight = wirePerWinding[windingIndex].get_maximum_outer_height();
+            // ABT #2546: the cross-section this section's crossings are packed by. A litz winding
+            // flattened by the wind in progress is an OVAL of the turn's dimensions (its turns are
+            // marked so once the wind fits, see the litz footprint search); otherwise the turn's
+            // own cross-section (resolve_turn_section: its stored shape and dimensions, or its
+            // wire's). Round turns keep the exact circle arithmetic below (wireHeight), so their
+            // placement is unchanged.
+            const bool flattenedLitz = _litzWoundFootprintPerWinding.count(windingIndex) > 0;
+            auto crossing_section_of = [&](const Turn& sectionTurn) {
+                if (flattenedLitz) {
+                    if (!sectionTurn.get_dimensions() || sectionTurn.get_dimensions()->size() < 2) {
+                        throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                            "wind_toroidal_additional_turns: flattened litz turn " + sectionTurn.get_name() +
+                            " states no dimensions, so its outer crossing cannot be packed");
+                    }
+                    return TurnSection{TurnCrossSectionalShape::OVAL, sectionTurn.get_dimensions().value()[0],
+                                       sectionTurn.get_dimensions().value()[1]};
+                }
+                auto resolved = resolve_turn_section(sectionTurn, get_functional_description(), wirePerWinding);
+                if (std::holds_alternative<std::string>(resolved)) {
+                    throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                        "wind_toroidal_additional_turns: the outer crossing cannot be packed, the outline of " +
+                        std::get<std::string>(resolved));
+                }
+                return std::get<TurnSection>(resolved);
+            };
+            auto crossing_outline_of = [&](const Turn& sectionTurn, const TurnSection& turnSection) {
+                if (turnSection.shape == TurnCrossSectionalShape::ROUND) {
+                    if (std::abs(turnSection.width - turnSection.height) > 1e-12) {
+                        throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                            "wind_toroidal_additional_turns: turn " + sectionTurn.get_name() + " is ROUND but measures " +
+                            std::to_string(turnSection.width) + " x " + std::to_string(turnSection.height) + " m");
+                    }
+                    return crossing_outline(turnSection.shape, turnSection.width, turnSection.height, 0);
+                }
+                if (!sectionTurn.get_rotation()) {
+                    throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                        "wind_toroidal_additional_turns: turn " + sectionTurn.get_name() +
+                        " states no rotation, so the outline of its outer crossing is unknown");
+                }
+                return crossing_outline(turnSection.shape, turnSection.width, turnSection.height, sectionTurn.get_rotation().value());
+            };
             if (windingOrientation == WindingOrientation::OVERLAPPING) {
                 currentBaseRadialHeight -= turnsInSection[0].get_dimensions().value()[0] / 2;
             }
@@ -27496,6 +27906,10 @@ bool Coil::wind_toroidal_additional_turns() {
                             continue;   // its connection is the output terminal (see above)
                         }
                         std::vector<double> additionalCoordinates = {-bobbinColumnWidth * 2 - turn.get_coordinates()[0], turn.get_coordinates()[1]};
+                        // ABT #2546: this crossing's real cross-section.
+                        const TurnSection ownSection = crossing_section_of(turn);
+                        const bool ownRound = ownSection.shape == TurnCrossSectionalShape::ROUND;
+                        const CrossingOutline ownOutline = crossing_outline_of(turn, ownSection);
                         // THE OUTER CROSSING SITS BETWEEN THE TWO INNER CROSSINGS IT JOINS.
                         // ABT #685 (Alf, 2026-08-18): "the outer crossings should be at the middle
                         // point of the two inner that connect them". The wire leaves its inner
@@ -27617,8 +28031,47 @@ bool Coil::wind_toroidal_additional_turns() {
                             auto clearToOtherSection = [&](const OtherSectionCrossing& other) {
                                 return (wireHeight + other.wireHeight) / 2 + 5e-9;
                             };
+                            // ABT #2546: a pair with a non-round crossing touches where their real
+                            // outlines do (same 5 nm bias); two round ones keep the circle tangency.
+                            std::vector<std::optional<CrossingContact>> placedContacts;
+                            for (size_t placedIndex = 0; placedIndex < placedTurnsCoordinates.size(); ++placedIndex) {
+                                if (ownRound && placedTurnsRound[placedIndex]) {
+                                    placedContacts.push_back(std::nullopt);
+                                }
+                                else {
+                                    placedContacts.push_back(crossing_contact(ownOutline, placedTurnsOutlines[placedIndex], 5e-9));
+                                }
+                            }
+                            std::vector<std::optional<CrossingContact>> otherSectionContacts;
+                            for (const auto& other : otherSectionsCrossings) {
+                                if (ownRound && other.round) {
+                                    otherSectionContacts.push_back(std::nullopt);
+                                }
+                                else {
+                                    otherSectionContacts.push_back(crossing_contact(ownOutline, other.outline, 5e-9));
+                                }
+                            }
+                            auto crossingCentre = [&](const std::vector<double>& polarCoordinates) {
+                                const double radius = windowRadialHeight - polarCoordinates[0];
+                                const double angle = polarCoordinates[1] / 180 * std::numbers::pi;
+                                return std::array<double, 2>{radius * cos(angle), radius * sin(angle)};
+                            };
+                            auto collidesWithOutline = [&](const std::vector<double>& candidate, const std::vector<double>& placedCoordinates,
+                                                           const CrossingContact& contact) {
+                                const auto c = crossingCentre(candidate);
+                                const auto p = crossingCentre(placedCoordinates);
+                                return distance_to_contact_hull(contact, c[0] - p[0], c[1] - p[1]) < contact.reach - 1e-9;
+                            };
                             auto restAt = [&](double az) {
                                 double restRadius = baseRadius;
+                                auto restAgainstOutline = [&](const std::vector<double>& placedCoordinates, const CrossingContact& contact) {
+                                    const auto p = crossingCentre(placedCoordinates);
+                                    const double azRadians = az / 180 * std::numbers::pi;
+                                    auto exit = crossing_contact_ray_exit(contact, p[0], p[1], cos(azRadians), sin(azRadians));
+                                    if (exit) {
+                                        restRadius = std::max(restRadius, exit.value());
+                                    }
+                                };
                                 auto restAgainst = [&](const std::vector<double>& placedCoordinates, double clearDistance) {
                                     double placedRadius = windowRadialHeight - placedCoordinates[0];
                                     double dAng = std::remainder(placedCoordinates[1] - az, 360.0) / 180 * std::numbers::pi;
@@ -27630,12 +28083,22 @@ bool Coil::wind_toroidal_additional_turns() {
                                     double tangentRadius = placedRadius * cos(dAng) + sqrt(discriminant);
                                     restRadius = std::max(restRadius, tangentRadius);
                                 };
-                                for (auto& placedCoordinates : placedTurnsCoordinates) {
-                                    restAgainst(placedCoordinates, wireHeightClear);
+                                for (size_t placedIndex = 0; placedIndex < placedTurnsCoordinates.size(); ++placedIndex) {
+                                    if (placedContacts[placedIndex]) {
+                                        restAgainstOutline(placedTurnsCoordinates[placedIndex], placedContacts[placedIndex].value());
+                                    }
+                                    else {
+                                        restAgainst(placedTurnsCoordinates[placedIndex], wireHeightClear);
+                                    }
                                 }
                                 if (sectionsShareTheOuterRing) {
-                                    for (const auto& other : otherSectionsCrossings) {
-                                        restAgainst(other.coordinates, clearToOtherSection(other));
+                                    for (size_t otherIndex = 0; otherIndex < otherSectionsCrossings.size(); ++otherIndex) {
+                                        if (otherSectionContacts[otherIndex]) {
+                                            restAgainstOutline(otherSectionsCrossings[otherIndex].coordinates, otherSectionContacts[otherIndex].value());
+                                        }
+                                        else {
+                                            restAgainst(otherSectionsCrossings[otherIndex].coordinates, clearToOtherSection(otherSectionsCrossings[otherIndex]));
+                                        }
                                     }
                                 }
                                 return restRadius;
@@ -27881,13 +28344,27 @@ bool Coil::wind_toroidal_additional_turns() {
                             }
                             additionalCoordinates[0] = windowRadialHeight - bestRadius;
                             additionalCoordinates[1] = bestAzimuth;
-                            if (!get_collision_distances(additionalCoordinates, placedTurnsCoordinates, wireHeightClear).empty()) {
+                            std::vector<std::vector<double>> roundPlacedCoordinates;
+                            for (size_t placedIndex = 0; placedIndex < placedTurnsCoordinates.size(); ++placedIndex) {
+                                if (!placedContacts[placedIndex]) {
+                                    roundPlacedCoordinates.push_back(placedTurnsCoordinates[placedIndex]);
+                                }
+                                else if (collidesWithOutline(additionalCoordinates, placedTurnsCoordinates[placedIndex], placedContacts[placedIndex].value())) {
+                                    throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+                                        "wind_toroidal_additional_turns: rested outer crossing still collides (real cross-sections) for turn " + turn.get_name());
+                                }
+                            }
+                            if (!get_collision_distances(additionalCoordinates, roundPlacedCoordinates, wireHeightClear).empty()) {
                                 throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
                                     "wind_toroidal_additional_turns: rested outer crossing still collides for turn " + turn.get_name());
                             }
                             if (sectionsShareTheOuterRing) {
-                                for (const auto& other : otherSectionsCrossings) {
-                                    if (!get_collision_distances(additionalCoordinates, {other.coordinates}, clearToOtherSection(other)).empty()) {
+                                for (size_t otherIndex = 0; otherIndex < otherSectionsCrossings.size(); ++otherIndex) {
+                                    const auto& other = otherSectionsCrossings[otherIndex];
+                                    const bool collides = otherSectionContacts[otherIndex]
+                                        ? collidesWithOutline(additionalCoordinates, other.coordinates, otherSectionContacts[otherIndex].value())
+                                        : !get_collision_distances(additionalCoordinates, {other.coordinates}, clearToOtherSection(other)).empty();
+                                    if (collides) {
                                         throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
                                             "wind_toroidal_additional_turns: rested outer crossing of turn " + turn.get_name() +
                                             " in section '" + section.get_name() + "' still collides with a crossing of another section");
@@ -27937,7 +28414,9 @@ bool Coil::wind_toroidal_additional_turns() {
 
                         turns[turnIndex] = turn;
                         placedTurnsCoordinates.push_back(additionalCoordinates);
-                        currentSectionCrossings.push_back({additionalCoordinates, wireHeight});
+                        placedTurnsOutlines.push_back(ownOutline);
+                        placedTurnsRound.push_back(ownRound);
+                        currentSectionCrossings.push_back({additionalCoordinates, wireHeight, ownRound, ownOutline});
                     }
                     currentBaseRadialHeightForLayers -= turnsInSection[0].get_dimensions().value()[0];
                 }
@@ -28865,7 +29344,9 @@ bool Coil::delimit_and_compact_round_window() {
                         wireRadius = windingWindows[0].get_radial_height().value() - turnsInLayer[0].get_coordinates()[0];
                     }
 
-                    double turnDimensionAngle = wound_distance_to_angle(turnsInLayer[0].get_dimensions().value()[1], wireRadius);
+                    double turnDimensionAngle = is_flattened_litz(wirePerWinding[windingIndex])
+                                                    ? flattened_litz_ring_pitch_angle(wirePerWinding[windingIndex], wireRadius)   // ABT #2546
+                                                    : wound_distance_to_angle(turnsInLayer[0].get_dimensions().value()[1], wireRadius);
 
                     // for (auto& turn : turnsInLayer) {
                         // turnDimensionAngle = wound_distance_to_angle(turn.get_dimensions().value()[1], windingWindows[0].get_radial_height().value() - turn.get_coordinates()[0]);
