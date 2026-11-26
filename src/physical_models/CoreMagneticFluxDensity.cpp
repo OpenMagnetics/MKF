@@ -176,15 +176,8 @@ void CoreMagneticFluxDensity::find_region_twins() {
                 const auto& a = leftPaths[pathIndex];
                 const auto& b = rightPaths[pathIndex];
                 if (a.length != b.length || a.width != b.width || a.gapLength != b.gapLength || a.lengthFraction != b.lengthFraction ||
-                    a.cellIndexes.empty() != b.cellIndexes.empty() || a.segments.size() != b.segments.size()) {
+                    a.cellIndexes.empty() != b.cellIndexes.empty()) {
                     return false;
-                }
-                for (size_t segmentIndex = 0; segmentIndex < a.segments.size(); ++segmentIndex) {
-                    const auto& segmentA = a.segments[segmentIndex];
-                    const auto& segmentB = b.segments[segmentIndex];
-                    if (segmentA.materialIndex != segmentB.materialIndex || segmentA.air != segmentB.air || segmentA.length != segmentB.length) {
-                        return false;
-                    }
                 }
             }
         }
@@ -233,8 +226,6 @@ struct CoreMagneticFluxDensity::BendGeometry {
         double clippedArea;
         Polygon clipped;
         bool kept;
-        // The whole square, before the cuts: where a material boundary crosses it, its share on either side.
-        Polygon full;
     };
     size_t numberColumns;
     std::vector<Square> squares;
@@ -322,7 +313,7 @@ CoreMagneticFluxDensity::BendGeometry CoreMagneticFluxDensity::compute_bend_geom
             Polygon clipped = clip_half_plane(canonical, {0, -1}, cutA);  // y >= -cutA
             clipped = clip_half_plane(clipped, {1, 0}, cutB);              // x <= cutB
             double scale = bend.scale(uLow + step / 2, thetaCentre);
-            BendGeometry::Square square{columnIndex, rowIndex, scale, fullArea, 0, {}, false, canonical};
+            BendGeometry::Square square{columnIndex, rowIndex, scale, fullArea, 0, {}, false};
             if (clipped.size() >= 3) {
                 double clippedArea = polygon_area(clipped);
                 if (clippedArea > 1e-9 * fullArea) {
@@ -363,73 +354,28 @@ void CoreMagneticFluxDensity::add_bend_region(const std::string& name, Point cor
     const size_t numberColumns = geometry.numberColumns;
     const double step = std::numbers::pi / static_cast<double>(numberRows);
 
-    // Limb a in another material than the corner and limb b (a moulded body's post or shell under its plate): the
-    // boundary is the line y = 0 of the bend's frame, the plate's face. Every square it crosses is a path through both
-    // materials in series, their lengths in the square's area shares on either side, and two cells, one per material.
-    const bool limbAOwnMaterial = _currentLimbAMaterial && (_currentLimbAMaterial->air != _currentAir ||
-                                                           (!_currentAir && _currentLimbAMaterial->materialIndex != _currentMaterialIndex));
-    auto addCell = [&](const Polygon& canonicalPolygon, double area, size_t materialIndex, bool air) {
-        CoreFluxDensityCell cell;
-        cell.region = name;
-        for (const auto& point : canonicalPolygon) {
-            double drawnX = point[0] < 0 && canonicalWidthA != widthA ? point[0] * stretchA : point[0];
-            double x = mirrorX ? -drawnX : drawnX;
-            double y = mirrorY ? -point[1] : point[1];
-            cell.polygon.push_back({corner[0] + x, corner[1] + y});
-        }
-        cell.volume = area * depth / fluxShare;
-        cell.materialIndex = materialIndex;
-        cell.air = air;
-        _cells.push_back(cell);
-        return _cells.size() - 1;
-    };
-    // A sliver below this share of a square is the boundary grazing it, not a stretch of another material.
-    const double boundaryTolerance = 1e-9;
-
     // pathsByColumn[column][row]: the bend's curvilinear square there, if the cuts leave any of it.
     std::vector<std::vector<std::optional<Path>>> pathsByColumn(numberColumns, std::vector<std::optional<Path>>(numberRows));
     for (const auto& square : geometry.squares) {
         // The whole curvilinear square is the path; the cut keeps a fraction of it.
         auto& path = pathsByColumn[square.column][square.row];
-        path = Path{{}, square.scale * step, square.scale * step, 0, 0, {}};
-        double limbAShare = 0;
-        if (limbAOwnMaterial) {
-            Polygon fullBelow = clip_half_plane(square.full, {0, 1}, 0);  // y <= 0
-            limbAShare = fullBelow.size() >= 3 ? std::clamp(polygon_area(fullBelow) / square.fullArea, 0.0, 1.0) : 0.0;
-            if (limbAShare < boundaryTolerance) {
-                limbAShare = 0;
-            }
-            else if (limbAShare > 1 - boundaryTolerance) {
-                limbAShare = 1;
-            }
-            if (limbAShare > 0) {
-                path->segments.push_back(Segment{_currentLimbAMaterial->materialIndex, _currentLimbAMaterial->air, path->length * limbAShare});
-            }
-            if (limbAShare > 0 && limbAShare < 1) {
-                path->segments.push_back(Segment{_currentMaterialIndex, _currentAir, path->length * (1 - limbAShare)});
-            }
-        }
+        path = Path{{}, square.scale * step, square.scale * step, 0, 0};
         if (!square.kept) {
             continue;
         }
-        if (limbAShare == 0) {
-            path->cellIndexes.push_back(addCell(square.clipped, square.clippedArea, _currentMaterialIndex, _currentAir));
+        CoreFluxDensityCell cell;
+        cell.region = name;
+        for (const auto& point : square.clipped) {
+            double drawnX = point[0] < 0 && canonicalWidthA != widthA ? point[0] * stretchA : point[0];
+            double x = mirrorX ? -drawnX : drawnX;
+            double y = mirrorY ? -point[1] : point[1];
+            cell.polygon.push_back({corner[0] + x, corner[1] + y});
         }
-        else if (limbAShare == 1) {
-            path->cellIndexes.push_back(addCell(square.clipped, square.clippedArea, _currentLimbAMaterial->materialIndex, _currentLimbAMaterial->air));
-        }
-        else {
-            Polygon below = clip_half_plane(square.clipped, {0, 1}, 0);
-            Polygon above = clip_half_plane(square.clipped, {0, -1}, 0);
-            double belowArea = below.size() >= 3 ? polygon_area(below) : 0;
-            double aboveArea = above.size() >= 3 ? polygon_area(above) : 0;
-            if (belowArea > boundaryTolerance * square.fullArea) {
-                path->cellIndexes.push_back(addCell(below, belowArea, _currentLimbAMaterial->materialIndex, _currentLimbAMaterial->air));
-            }
-            if (aboveArea > boundaryTolerance * square.fullArea) {
-                path->cellIndexes.push_back(addCell(above, aboveArea, _currentMaterialIndex, _currentAir));
-            }
-        }
+        cell.volume = square.clippedArea * depth / fluxShare;
+        cell.materialIndex = _currentMaterialIndex;
+        cell.air = _currentAir;
+        _cells.push_back(cell);
+        path->cellIndexes.push_back(_cells.size() - 1);
         path->lengthFraction = std::min(1.0, square.clippedArea / square.fullArea);
     }
 
@@ -553,12 +499,6 @@ void CoreMagneticFluxDensity::build_closed_core(Core core, double yokeDepth) {
         _currentAir = !material;
         _currentMaterialIndex = material.value_or(0);
     };
-    // A corner's limb a (the post, or the shell) in its own material below the plate's face: only a moulded body has one.
-    auto useLimbAMaterial = [&](std::optional<size_t> material) {
-        if (family == CoreShapeFamily::MOLDED) {
-            _currentLimbAMaterial = LimbMaterial{material.value_or(0), !material};
-        }
-    };
     const double lateralLegInnerFace = showingCoreWidth - lateralLegWidth;
     const double windowWidth = lateralLegInnerFace - mainLegInnerFace;
     if (!(windowWidth > 0) || !(lateralLegWidth > 0)) {
@@ -670,6 +610,18 @@ void CoreMagneticFluxDensity::build_closed_core(Core core, double yokeDepth) {
     auto lateralGapIntervals = gapIntervals(rightColumn);
     auto mainCuts = legCuts(mainGapIntervals, mainLegWidth);
     auto lateralCuts = legCuts(lateralGapIntervals, lateralLegWidth);
+    // A moulded body's post or shell of another material than the plate it meets: the corner ends at the plate's face,
+    // the leg runs straight in its own material up to it, and no cell holds two materials. The shell over the cavity
+    // height is the cover pressing's (CorePieceMolded::get_region_shape_constants): it runs down to the base plate.
+    if (postMaterial != coverMaterial) {
+        mainCuts.top = 0;
+    }
+    if (postMaterial != baseMaterial) {
+        mainCuts.bottom = 0;
+    }
+    if (coverMaterial != baseMaterial) {
+        lateralCuts.bottom = 0;
+    }
     double topYokeCut = std::min(armReach * topYokeThickness, windowWidth / 2);
     double bottomYokeCut = std::min(armReach * bottomYokeThickness, windowWidth / 2);
 
@@ -678,22 +630,15 @@ void CoreMagneticFluxDensity::build_closed_core(Core core, double yokeDepth) {
     const std::string topName = pieceAndPlate ? "plate" : "top yoke";
     const std::string bottomName = pieceAndPlate ? "back" : "bottom yoke";
     useMaterial(coverMaterial);
-    useLimbAMaterial(postMaterial);
     add_bend_region(mainName + " / " + topName + " corner", {mainLegInnerFace, windowTop}, false, false, mainLegWidth, topYokeThickness,
                     mainCuts.top, topYokeCut, yokeDepth, fluxShare, mainDepth);
-    // The shell over the cavity height is the cover pressing's (CorePieceMolded::get_region_shape_constants): the cover
-    // runs down to the base plate's top face.
-    useLimbAMaterial(coverMaterial);
     add_bend_region(lateralName + " / " + topName + " corner", {lateralLegInnerFace, windowTop}, true, false, lateralLegWidth,
                     topYokeThickness, lateralCuts.top, topYokeCut, yokeDepth, fluxShare, lateralDepth);
     useMaterial(baseMaterial);
-    useLimbAMaterial(postMaterial);
     add_bend_region(mainName + " / " + bottomName + " corner", {mainLegInnerFace, windowBottom}, false, true, mainLegWidth,
                     bottomYokeThickness, mainCuts.bottom, bottomYokeCut, yokeDepth, fluxShare, mainDepth);
-    useLimbAMaterial(coverMaterial);
     add_bend_region(lateralName + " / " + bottomName + " corner", {lateralLegInnerFace, windowBottom}, true, true, lateralLegWidth,
                     bottomYokeThickness, lateralCuts.bottom, bottomYokeCut, yokeDepth, fluxShare, lateralDepth);
-    _currentLimbAMaterial.reset();
 
     useMaterial(postMaterial);
     addLegStraights(mainName, mainGapIntervals, mainCuts, mainLegInnerFace - mainLegWidth, mainLegWidth, mainDepth);
@@ -721,22 +666,12 @@ void CoreMagneticFluxDensity::calibrate_depth(const std::function<void(double)>&
         for (size_t index = 0; index < _regions.size(); ++index) {
             _regionTwins[index] = index;
         }
-        // The geometric factor sum(l / A). A map whose paths cross materials has no one permeability per region: it is
-        // probed with every region and segment read as air, MMF mu0 / flux.
-        const bool probeAsAir = has_mixed_paths();
-        struct ProbeGuard {
-            bool& flag;
-            ~ProbeGuard() { flag = false; }
-        } probeGuard{_geometricProbe};
-        _geometricProbe = probeAsAir;
         auto instant = calculate_flux_densities(probeFlux);
-        _geometricProbe = false;
-        // Otherwise each region's MMF times its own grade's initial permeability.
+        // The geometric factor sum(l / A): each region's MMF times its own material's initial permeability (mu0 for air).
         double factor = 0;
         for (size_t regionIndex = 0; regionIndex < _regions.size(); ++regionIndex) {
             if (include(_regions[regionIndex])) {
-                factor += instant.regionMagnetomotiveForces[regionIndex] *
-                          (probeAsAir ? constants.vacuumPermeability : incremental_permeability(region_curve(_regions[regionIndex]), 0));
+                factor += instant.regionMagnetomotiveForces[regionIndex] * incremental_permeability(region_curve(_regions[regionIndex]), 0);
             }
         }
         return factor / probeFlux;
@@ -817,27 +752,7 @@ void CoreMagneticFluxDensity::calibrate_drum_family(Core core) {
 }
 
 const CoreMagneticFluxDensity::Curve& CoreMagneticFluxDensity::region_curve(const Region& region) const {
-    return material_curve(region.materialIndex, region.air);
-}
-
-const CoreMagneticFluxDensity::Curve& CoreMagneticFluxDensity::material_curve(size_t materialIndex, bool air) const {
-    if (air || _geometricProbe) {
-        return *_airCurve;
-    }
-    return *_curves[materialIndex];
-}
-
-bool CoreMagneticFluxDensity::has_mixed_paths() const {
-    for (const auto& region : _regions) {
-        for (const auto& slice : region.slices) {
-            for (const auto& path : slice.paths) {
-                if (!path.segments.empty()) {
-                    return true;
-                }
-            }
-        }
-    }
-    return false;
+    return region.air ? *_airCurve : *_curves[region.materialIndex];
 }
 
 size_t CoreMagneticFluxDensity::add_material(const CoreMaterial& material) {
@@ -1084,38 +999,6 @@ double CoreMagneticFluxDensity::incremental_permeability(const InitialPermeabili
 }
 
 double CoreMagneticFluxDensity::path_flux_density(const InitialPermeability::MagnetisationCurve& curve, const Path& path, double magnetomotiveForce) const {
-    if (!path.segments.empty()) {
-        // Materials in series: sum(H_m(B) l_m) + B g / mu0 = F, rising strictly with B. No segment can take more than
-        // the whole MMF, so B is at most the least of flux_density(F / l_m) over them: bisection on B below that.
-        if (!(magnetomotiveForce > 0)) {
-            return 0;
-        }
-        double high = std::numeric_limits<double>::max();
-        for (const auto& segment : path.segments) {
-            high = std::min(high, flux_density(material_curve(segment.materialIndex, segment.air), magnetomotiveForce / segment.length));
-        }
-        if (path.gapLength > 0) {
-            high = std::min(high, constants.vacuumPermeability * magnetomotiveForce / path.gapLength);
-        }
-        double low = 0;
-        for (size_t iteration = 0; iteration < 200; ++iteration) {
-            double fluxDensity = (low + high) / 2;
-            double total = fluxDensity / constants.vacuumPermeability * path.gapLength;
-            for (const auto& segment : path.segments) {
-                total += field_strength(material_curve(segment.materialIndex, segment.air), fluxDensity) * segment.length;
-            }
-            if (total > magnetomotiveForce) {
-                high = fluxDensity;
-            }
-            else {
-                low = fluxDensity;
-            }
-            if (high - low <= 1e-13 * high) {
-                break;
-            }
-        }
-        return (low + high) / 2;
-    }
     if (path.gapLength == 0) {
         return flux_density(curve, magnetomotiveForce / path.length);
     }
@@ -1156,16 +1039,7 @@ double CoreMagneticFluxDensity::solve_slice(const InitialPermeability::Magnetisa
             double fluxDensity = path_flux_density(curve, path, magnetomotiveForce);
             pathFluxDensities[pathIndex] = fluxDensity;
             total += fluxDensity * area;
-            if (derivative && !path.segments.empty()) {
-                // dPhi/dF of the path: area / (sum(l_m / mu_inc,m) + g / mu0), each segment at its own H(B).
-                double reluctance = path.gapLength / constants.vacuumPermeability;
-                for (const auto& segment : path.segments) {
-                    const auto& segmentCurve = material_curve(segment.materialIndex, segment.air);
-                    reluctance += segment.length / incremental_permeability(segmentCurve, field_strength(segmentCurve, fluxDensity));
-                }
-                *derivative += area / reluctance;
-            }
-            else if (derivative) {
+            if (derivative) {
                 // dPhi/dF of the path: area / (l / mu_inc + g / mu0).
                 double fieldStrength = path.gapLength == 0 ? magnetomotiveForce / path.length
                                                            : (magnetomotiveForce - fluxDensity / constants.vacuumPermeability * path.gapLength) / path.length;
@@ -1255,18 +1129,9 @@ CoreFluxDensityInstant CoreMagneticFluxDensity::calculate_flux_densities(double 
                 // Read back through MKF's inverse: it applies the policy for a flux density past the curve's end.
                 double relativePermeability = fluxDensity > 0 ? fluxDensity / (constants.vacuumPermeability * field_strength(curve, fluxDensity))
                                                               : initialRelativePermeability;
-                const bool mixed = !slice.paths[pathIndex].segments.empty();
                 for (size_t cellIndex : slice.paths[pathIndex].cellIndexes) {
                     instant.fluxDensities[cellIndex] = sign * fluxDensity;
-                    if (mixed) {
-                        // A path through several materials: each cell on its own.
-                        const auto& cellCurve = material_curve(_cells[cellIndex].materialIndex, _cells[cellIndex].air);
-                        instant.relativePermeabilities[cellIndex] = fluxDensity > 0 ? fluxDensity / (constants.vacuumPermeability * field_strength(cellCurve, fluxDensity))
-                                                                                    : incremental_permeability(cellCurve, 0) / constants.vacuumPermeability;
-                    }
-                    else {
-                        instant.relativePermeabilities[cellIndex] = relativePermeability;
-                    }
+                    instant.relativePermeabilities[cellIndex] = relativePermeability;
                 }
             }
         }

@@ -472,6 +472,8 @@ TEST_CASE("Core flux density map covers every closed and drum family, and prices
                 if (map.get_cells()[cell].air) {
                     ++airCells;
                     CHECK_THAT(instant.relativePermeabilities[cell], Catch::Matchers::WithinRel(1.0, 1e-9));
+                    // The corners end at the plates' faces: the air is the straight post's alone, no corner holds any.
+                    CHECK(map.get_cells()[cell].region == "central column");
                 }
             }
             CHECK(airCells > 0);
