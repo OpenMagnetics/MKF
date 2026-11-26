@@ -1867,6 +1867,86 @@ static double turn_to_core_equivalent_radius(Wire wire) {
     return std::sqrt(conductingWidth * conductingHeight / std::numbers::pi);
 }
 
+// The series dielectric stack between a turn's copper and the ferrite as its air-equivalent thickness sum t_i / eps_ri
+// (calculate_turn_to_core_capacitance): wire enamel, the air gap, the core coating or case, the bobbin wall.
+static double turn_to_core_air_equivalent_gap(double wireCoatingThickness, double wireCoatingRelativePermittivity, double airGapToCore,
+                                              double coreCoatingThickness, double coreCoatingRelativePermittivity,
+                                              double bobbinThickness, double bobbinRelativePermittivity) {
+    const double enamelTerm = wireCoatingRelativePermittivity > 0 ? wireCoatingThickness / wireCoatingRelativePermittivity : 0.0;
+    const double coatingTerm = coreCoatingRelativePermittivity > 0 ? coreCoatingThickness / coreCoatingRelativePermittivity : 0.0;
+    // ABT #1164: the bobbin wall is plastic, not air — it enters the series stack as its
+    // air-equivalent thickness t/eps_r, exactly as the wire enamel and the core jacket do. A
+    // bobbin-less part (toroid, bare core) passes thickness 0 and contributes nothing.
+    if (bobbinThickness > 0 && !(bobbinRelativePermittivity > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Turn-to-core capacitance was given a bobbin wall thickness with no relative"
+            " permittivity: the bobbin layer cannot enter the dielectric stack");
+    }
+    const double bobbinTerm = bobbinThickness > 0 ? bobbinThickness / bobbinRelativePermittivity : 0.0;
+    const double airEquivalentGap = enamelTerm + std::max(0.0, airGapToCore) + coatingTerm + bobbinTerm;
+    if (airEquivalentGap <= 0) {
+        // Bare copper on a bare conductor: the image solution diverges, and so does the physics
+        // — that is a short, which the callers' geometry guards report; never a number here.
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
+            "Turn-to-core capacitance asked for a bare conductor in contact with the core (no wire"
+            " coating, no air gap, no core coating): that is a short circuit, not a capacitance");
+    }
+    return airEquivalentGap;
+}
+
+// A rectangular conductor as one turn-to-core face sees it: its conducting half extents along the face and normal to
+// it, and its corner radius. The turn's dimensions are its outer section in the window's frame (x, y) or, on a toroid,
+// the crossing's (radial, tangential); the wire's own width and height are matched to them, so a turn wound edge-on
+// or flat reads the right extent either way. The face's normal is the turn's first dimension on the central column
+// and on every toroid surface (bore, outside and the flat faces: the wire bends round the ring's edge about its
+// tangential axis, so the extent normal to the ferrite stays the radial one), its second dimension on a yoke.
+struct RectangularConductorSection {
+    double halfAlong;
+    double halfNormal;
+    double edgeRadius;
+};
+
+static RectangularConductorSection rectangular_conductor_section(const Wire& wire, const Turn& turn, StrayCapacitance::ElectricEnergyElement::Surface surface) {
+    using Surface = StrayCapacitance::ElectricEnergyElement::Surface;
+    bool normalIsFirstDimension;
+    switch (surface) {
+        case Surface::BORE:
+        case Surface::OUTSIDE:
+        case Surface::TOROID_FLAT_FACE:
+        case Surface::COLUMN:
+            normalIsFirstDimension = true;
+            break;
+        case Surface::UPPER_YOKE:
+        case Surface::LOWER_YOKE:
+            normalIsFirstDimension = false;
+            break;
+        default:
+            throw InvalidInputException(ErrorCode::MISSING_DATA,
+                "Turn '" + turn.get_name() + "' of rectangular wire faces a core surface the coil's bobbin does not place:"
+                " which of its sides faces the ferrite is unknown");
+    }
+    if (!turn.get_dimensions() || turn.get_dimensions()->size() < 2) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            "Turn '" + turn.get_name() + "' of rectangular wire has no dimensions: which of its sides faces the ferrite is unknown");
+    }
+    auto dimensions = turn.get_dimensions().value();
+    const double outerWidth = wire.get_maximum_outer_width();
+    const double outerHeight = wire.get_maximum_outer_height();
+    const double conductingWidth = wire.get_maximum_conducting_width();
+    const double conductingHeight = wire.get_maximum_conducting_height();
+    // The turn's first dimension runs along the wire's width when it is closer to the outer width than to the height.
+    const bool firstIsWidth = std::abs(dimensions[0] - outerWidth) <= std::abs(dimensions[0] - outerHeight);
+    const double conductingFirst = firstIsWidth ? conductingWidth : conductingHeight;
+    const double conductingSecond = firstIsWidth ? conductingHeight : conductingWidth;
+    RectangularConductorSection section;
+    section.halfNormal = (normalIsFirstDimension ? conductingFirst : conductingSecond) / 2;
+    section.halfAlong = (normalIsFirstDimension ? conductingSecond : conductingFirst) / 2;
+    // A rectangular wire that states no edge radius is a rectangle with sharp corners, as its record describes it
+    // (Alf's choice, 2026-11-26, over throwing: MAS makes edgeRadius optional and custom flat wires omit it).
+    section.edgeRadius = wire.get_edge_radius() ? resolve_dimensional_values(wire.get_edge_radius().value()) : 0.0;
+    return section;
+}
+
 double StrayCapacitance::calculate_turn_to_core_capacitance(double conductingRadius, double turnLength,
                                                             double wireCoatingThickness, double wireCoatingRelativePermittivity,
                                                             double airGapToCore,
@@ -1905,25 +1985,9 @@ double StrayCapacitance::calculate_turn_to_core_capacitance(double conductingRad
         return 0;
     }
         const double wireRadius = conductingRadius;  // contract: conductingRadius is the radius (Dc = 2*r)
-    const double enamelTerm = wireCoatingRelativePermittivity > 0 ? wireCoatingThickness / wireCoatingRelativePermittivity : 0.0;
-    const double coatingTerm = coreCoatingRelativePermittivity > 0 ? coreCoatingThickness / coreCoatingRelativePermittivity : 0.0;
-    // ABT #1164: the bobbin wall is plastic, not air — it enters the series stack as its
-    // air-equivalent thickness t/eps_r, exactly as the wire enamel and the core jacket do. A
-    // bobbin-less part (toroid, bare core) passes thickness 0 and contributes nothing.
-    if (bobbinThickness > 0 && !(bobbinRelativePermittivity > 0)) {
-        throw InvalidInputException(ErrorCode::INVALID_INPUT,
-            "Turn-to-core capacitance was given a bobbin wall thickness with no relative"
-            " permittivity: the bobbin layer cannot enter the dielectric stack");
-    }
-    const double bobbinTerm = bobbinThickness > 0 ? bobbinThickness / bobbinRelativePermittivity : 0.0;
-    const double airEquivalentGap = enamelTerm + std::max(0.0, airGapToCore) + coatingTerm + bobbinTerm;
-    if (airEquivalentGap <= 0) {
-        // Bare copper on a bare conductor: the image solution diverges, and so does the physics
-        // — that is a short, which the callers' geometry guards report; never a number here.
-        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
-            "Turn-to-core capacitance asked for a bare conductor in contact with the core (no wire"
-            " coating, no air gap, no core coating): that is a short circuit, not a capacitance");
-    }
+    const double airEquivalentGap = turn_to_core_air_equivalent_gap(wireCoatingThickness, wireCoatingRelativePermittivity, airGapToCore,
+                                                                    coreCoatingThickness, coreCoatingRelativePermittivity,
+                                                                    bobbinThickness, bobbinRelativePermittivity);
     // Neighbour screening (see the header). The Smythe solution quoted above is the ISOLATED cylinder: it counts
     // the whole circumference, including the field that leaves the flanks of the turn towards
     // the core and, with a neighbour beside it, ends on that neighbour instead. In a network of
@@ -2054,6 +2118,372 @@ std::array<double, 2> StrayCapacitance::conductor_row_over_plane_potential_gradi
         gradientY += solution.charges[k] * 0.5 * a * (sinhOverDenominator(plus, cosine) - sinhOverDenominator(minus, cosine));
     }
     return {gradientX, gradientY};
+}
+
+namespace {
+
+// Integral over the straight segment (x0, y0)-(x1, y1) of ln|P - S| ds, exact: in the segment's frame P sits at
+// s along it and h off it, and the integral is F(L - s) - F(-s), F(t) = t ln sqrt(t^2 + h^2) - t + h atan(t / h).
+double segment_log_integral(double px, double py, double x0, double y0, double x1, double y1) {
+    const double length = std::hypot(x1 - x0, y1 - y0);
+    const double ux = (x1 - x0) / length;
+    const double uy = (y1 - y0) / length;
+    const double s = (px - x0) * ux + (py - y0) * uy;
+    const double h = std::abs(-(px - x0) * uy + (py - y0) * ux);
+    auto primitive = [h](double t) {
+        double squared = t * t + h * h;
+        double value = (squared > 0 ? 0.5 * t * std::log(squared) : 0.0) - t;
+        if (h > 0) {
+            value += h * std::atan(t / h);
+        }
+        return value;
+    };
+    return primitive(length - s) - primitive(-s);
+}
+
+// Its gradient with respect to P, exact: along the segment 1/2 ln((s^2 + h^2) / ((s - L)^2 + h^2)), across it
+// atan(s / h) - atan((s - L) / h), h signed. P never lies on the segment (it is a point outside the conductor).
+std::array<double, 2> segment_log_integral_gradient(double px, double py, double x0, double y0, double x1, double y1) {
+    const double length = std::hypot(x1 - x0, y1 - y0);
+    const double ux = (x1 - x0) / length;
+    const double uy = (y1 - y0) / length;
+    const double s = (px - x0) * ux + (py - y0) * uy;
+    const double h = -(px - x0) * uy + (py - y0) * ux;
+    double along = 0.5 * std::log((s * s + h * h) / ((s - length) * (s - length) + h * h));
+    double across = h != 0 ? std::atan(s / h) - std::atan((s - length) / h) : 0.0;
+    return {along * ux - across * uy, along * uy + across * ux};
+}
+
+// The remainder holds only the row's columns two or more pitches away, smooth over a panel (a panel is a small part
+// of the pitch): two Gauss-Legendre points integrate it to the panel's (length / distance)^4.
+constexpr std::array<double, 2> kGaussNodes = {-0.5773502691896258, 0.5773502691896258};
+constexpr std::array<double, 2> kGaussWeights = {1.0, 1.0};
+
+// The row's periodic Green's function minus its three nearest columns (the conductor, its neighbours on either
+// side, and their images), which segment_log_integral carries exactly: what is left is smooth over the cell.
+//   G = 1/2 ln[(cosh(k(y+ys)) - cos(k dx)) / (cosh(k(y-ys)) - cos(k dx))] = sum_m 1/2 ln(r_image,m^2 / r_m^2).
+double periodic_green_remainder(double x, double y, double xs, double ys, double period) {
+    const double k = 2.0 * std::numbers::pi / period;
+    const double cosine = std::cos(k * (x - xs));
+    auto logDenominator = [&](double u) {
+        // ln(cosh(u) - c), overflow-free beyond |u| = 40
+        return std::abs(u) > 40 ? std::abs(u) - std::numbers::ln2 : std::log(std::cosh(u) - cosine);
+    };
+    double full = 0.5 * (logDenominator(k * (y + ys)) - logDenominator(k * (y - ys)));
+    double near = 0;
+    for (double shift : {-period, 0.0, period}) {
+        double dx = x - xs - shift;
+        near += 0.5 * std::log((dx * dx + (y + ys) * (y + ys)) / (dx * dx + (y - ys) * (y - ys)));
+    }
+    return full - near;
+}
+
+std::array<double, 2> periodic_green_remainder_gradient(double x, double y, double xs, double ys, double period) {
+    const double k = 2.0 * std::numbers::pi / period;
+    const double angle = k * (x - xs);
+    const double cosine = std::cos(angle);
+    auto inverseDenominator = [&](double u) {
+        return std::abs(u) > 40 ? 0.0 : 1.0 / (std::cosh(u) - cosine);
+    };
+    auto sinhOverDenominator = [&](double u) {
+        return std::abs(u) > 40 ? (u > 0 ? 1.0 : -1.0) : std::sinh(u) / (std::cosh(u) - cosine);
+    };
+    double plus = k * (y + ys);
+    double minus = k * (y - ys);
+    double gradientX = 0.5 * k * std::sin(angle) * (inverseDenominator(plus) - inverseDenominator(minus));
+    double gradientY = 0.5 * k * (sinhOverDenominator(plus) - sinhOverDenominator(minus));
+    for (double shift : {-period, 0.0, period}) {
+        double dx = x - xs - shift;
+        double imageSquared = dx * dx + (y + ys) * (y + ys);
+        double sourceSquared = dx * dx + (y - ys) * (y - ys);
+        gradientX -= dx / imageSquared - dx / sourceSquared;
+        gradientY -= (y + ys) / imageSquared - (y - ys) / sourceSquared;
+    }
+    return {gradientX, gradientY};
+}
+
+// The potential at P of a unit charge density on panel (x0, y0)-(x1, y1), with the row and the image, in units
+// of 1 / (2 pi eps0): the three nearest columns exactly, the rest by Gauss-Legendre over the panel.
+double rectangle_panel_potential(double px, double py, const std::array<double, 4>& panel, double period) {
+    const auto [x0, y0, x1, y1] = panel;
+    const bool isolated = std::isinf(period);
+    double potential = 0;
+    for (double shift : isolated ? std::vector<double>{0.0} : std::vector<double>{-period, 0.0, period}) {
+        potential += segment_log_integral(px, py, x0 + shift, -y0, x1 + shift, -y1) - segment_log_integral(px, py, x0 + shift, y0, x1 + shift, y1);
+    }
+    if (!isolated) {
+        const double halfLength = std::hypot(x1 - x0, y1 - y0) / 2;
+        for (size_t point = 0; point < kGaussNodes.size(); ++point) {
+            double t = (kGaussNodes[point] + 1) / 2;
+            potential += kGaussWeights[point] * halfLength * periodic_green_remainder(px, py, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, period);
+        }
+    }
+    return potential;
+}
+
+std::array<double, 2> rectangle_panel_potential_gradient(double px, double py, const std::array<double, 4>& panel, double period) {
+    const auto [x0, y0, x1, y1] = panel;
+    const bool isolated = std::isinf(period);
+    double gradientX = 0, gradientY = 0;
+    for (double shift : isolated ? std::vector<double>{0.0} : std::vector<double>{-period, 0.0, period}) {
+        auto image = segment_log_integral_gradient(px, py, x0 + shift, -y0, x1 + shift, -y1);
+        auto source = segment_log_integral_gradient(px, py, x0 + shift, y0, x1 + shift, y1);
+        gradientX += image[0] - source[0];
+        gradientY += image[1] - source[1];
+    }
+    if (!isolated) {
+        const double halfLength = std::hypot(x1 - x0, y1 - y0) / 2;
+        for (size_t point = 0; point < kGaussNodes.size(); ++point) {
+            double t = (kGaussNodes[point] + 1) / 2;
+            auto remainder = periodic_green_remainder_gradient(px, py, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, period);
+            gradientX += kGaussWeights[point] * halfLength * remainder[0];
+            gradientY += kGaussWeights[point] * halfLength * remainder[1];
+        }
+    }
+    return {gradientX, gradientY};
+}
+
+}  // namespace
+
+const StrayCapacitance::RectangleRowOverPlaneSolution& StrayCapacitance::solve_rectangle_row_over_plane(double halfAlong, double halfNormal, double edgeRadius,
+                                                                                                         double bottomHeight, double pitch) {
+    const double vacuumPermittivity = Constants().vacuumPermittivity;
+    if (!(halfAlong > 0) || !(halfNormal > 0) || !(bottomHeight > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Rectangular conductor row over a plane needs positive half extents and its lower face above the plane"
+            " (the conductor would touch or cross the plane)");
+    }
+    if (!(edgeRadius >= 0) || edgeRadius > std::min(halfAlong, halfNormal)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Rectangular conductor row over a plane: the corner radius " + std::to_string(edgeRadius) +
+            " m does not fit the conductor's half extents " + std::to_string(halfAlong) + " m and " + std::to_string(halfNormal) + " m");
+    }
+    if (!(pitch >= 2.0 * halfAlong)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Rectangular conductor row over a plane: pitch " + std::to_string(pitch) + " m is below the conductor width " +
+            std::to_string(2.0 * halfAlong) + " m along the row, i.e. neighbouring conductors overlap");
+    }
+    // Normalised to halfNormal: the solution depends only on the shape's ratios.
+    const double a = halfAlong / halfNormal;
+    const double r = edgeRadius / halfNormal;
+    const double g = bottomHeight / halfNormal;
+    const double p = std::isinf(pitch) ? pitch : pitch / halfNormal;
+    static thread_local std::map<std::tuple<double, double, double, double>, RectangleRowOverPlaneSolution> cache;
+    auto key = std::make_tuple(a, r, g, p);
+    if (auto it = cache.find(key); it != cache.end()) {
+        return it->second;
+    }
+
+    // The contour, counter-clockwise from the lower face: four straight sides, graded towards their ends (cosine
+    // spacing: the charge density is singular at a sharp corner and steep near a rounded one), and four quarter
+    // arcs of radius r in chords. Fixed counts, whatever the aspect ratio (the graded ends carry the crowding, and a
+    // count that followed the length would explode for a thin strip): 48 panels on the lower face, which carries most
+    // of the charge when the gap is small, 24 on each other side. The two lower arcs, 32 panels each, are graded
+    // quadratically towards their point nearest the plane: a rounded edge next to the plane carries the
+    // near-contact crowding over an angle of order sqrt(2 gap / r) (a circle 0.003 r above the plane is then within
+    // 0.7 % of its closed form); the upper arcs, 16 each, cosine-graded.
+    const size_t panelsOnLowerFace = 48;
+    const size_t panelsPerSide = 24;
+    const size_t panelsPerLowerArc = 32;
+    const size_t panelsPerUpperArc = 16;
+    const double centreY = g + 1.0;
+    std::vector<std::array<double, 4>> panels;
+    auto addSide = [&](double x0, double y0, double x1, double y1, size_t count) {
+        // A side the corner radius uses up entirely (a stadium, a circle) comes out a rounding error long, not zero:
+        // anything below 1e-12 of the half thickness is no side.
+        double length = std::hypot(x1 - x0, y1 - y0);
+        if (length <= 1e-12) {
+            return;
+        }
+        for (size_t i = 0; i < count; ++i) {
+            double t0 = 0.5 * (1 - std::cos(std::numbers::pi * static_cast<double>(i) / static_cast<double>(count)));
+            double t1 = 0.5 * (1 - std::cos(std::numbers::pi * static_cast<double>(i + 1) / static_cast<double>(count)));
+            panels.push_back({x0 + (x1 - x0) * t0, y0 + (y1 - y0) * t0, x0 + (x1 - x0) * t1, y0 + (y1 - y0) * t1});
+        }
+    };
+    // clusterAt: +1 grades towards the arc's start, -1 towards its end (the lowest point), 0 cosine towards both.
+    auto addArc = [&](double cx, double cy, double startAngle, int clusterAt) {
+        if (!(r > 0)) {
+            return;
+        }
+        const size_t count = clusterAt == 0 ? panelsPerUpperArc : panelsPerLowerArc;
+        auto grade = [&](size_t i) {
+            double u = static_cast<double>(i) / static_cast<double>(count);
+            if (clusterAt > 0) {
+                return u * u;
+            }
+            if (clusterAt < 0) {
+                return 1 - (1 - u) * (1 - u);
+            }
+            return 0.5 * (1 - std::cos(std::numbers::pi * u));
+        };
+        for (size_t i = 0; i < count; ++i) {
+            double angle0 = startAngle + std::numbers::pi / 2 * grade(i);
+            double angle1 = startAngle + std::numbers::pi / 2 * grade(i + 1);
+            panels.push_back({cx + r * std::cos(angle0), cy + r * std::sin(angle0), cx + r * std::cos(angle1), cy + r * std::sin(angle1)});
+        }
+    };
+    addSide(-a + r, g, a - r, g, panelsOnLowerFace);
+    addArc(a - r, g + r, -std::numbers::pi / 2, 1);
+    addSide(a, g + r, a, centreY + 1.0 - r, panelsPerSide);
+    addArc(a - r, centreY + 1.0 - r, 0, 0);
+    addSide(a - r, centreY + 1.0, -a + r, centreY + 1.0, panelsPerSide);
+    addArc(-a + r, centreY + 1.0 - r, std::numbers::pi / 2, 0);
+    addSide(-a, centreY + 1.0 - r, -a, g + r, panelsPerSide);
+    addArc(-a + r, g + r, std::numbers::pi, -1);
+
+    const size_t numberPanels = panels.size();
+    Eigen::MatrixXd influence(numberPanels, numberPanels);
+    for (size_t i = 0; i < numberPanels; ++i) {
+        double mx = (panels[i][0] + panels[i][2]) / 2;
+        double my = (panels[i][1] + panels[i][3]) / 2;
+        for (size_t j = 0; j < numberPanels; ++j) {
+            influence(i, j) = rectangle_panel_potential(mx, my, panels[j], p);
+        }
+    }
+    Eigen::VectorXd charges = influence.partialPivLu().solve(Eigen::VectorXd::Ones(static_cast<Eigen::Index>(numberPanels)));
+    double totalCharge = 0;
+    for (size_t j = 0; j < numberPanels; ++j) {
+        totalCharge += charges[static_cast<Eigen::Index>(j)] * std::hypot(panels[j][2] - panels[j][0], panels[j][3] - panels[j][1]);
+    }
+    if (!std::isfinite(totalCharge) || !(totalCharge > 0)) {
+        throw NaNResultException("Rectangular conductor row over a plane (half extents " + std::to_string(halfAlong) + " m and " +
+                                 std::to_string(halfNormal) + " m, lower face " + std::to_string(bottomHeight) + " m above the plane, pitch " +
+                                 std::to_string(pitch) + " m): the boundary-element solution has no positive charge");
+    }
+    RectangleRowOverPlaneSolution solution;
+    solution.halfAlong = a;
+    solution.edgeRadius = r;
+    solution.bottomHeight = g;
+    solution.period = p;
+    solution.panels = std::move(panels);
+    solution.charges.assign(charges.data(), charges.data() + charges.size());
+    solution.capacitancePerLength = 2.0 * std::numbers::pi * vacuumPermittivity * totalCharge;
+    const size_t numberClusters = 16;
+    for (size_t c = 0; c < numberClusters; ++c) {
+        RectangleRowOverPlaneSolution::Cluster cluster;
+        cluster.first = numberPanels * c / numberClusters;
+        cluster.end = numberPanels * (c + 1) / numberClusters;
+        // The centre is the charge-weighted midpoint, so the stretch's dipole moment about it vanishes and the line
+        // charge is right to (radius / distance)^2. A stretch with a panel of no positive charge (a screened flank of a
+        // tight row can carry all but none) has no such centre: it is never lumped (radius infinite).
+        bool allPositive = true;
+        for (size_t j = cluster.first; j < cluster.end; ++j) {
+            const auto& panel = solution.panels[j];
+            double charge = solution.charges[j] * std::hypot(panel[2] - panel[0], panel[3] - panel[1]);
+            allPositive = allPositive && charge > 0;
+            cluster.charge += charge;
+            cluster.x += charge * (panel[0] + panel[2]) / 2;
+            cluster.y += charge * (panel[1] + panel[3]) / 2;
+        }
+        if (!allPositive) {
+            cluster.radius = std::numeric_limits<double>::infinity();
+            solution.clusters.push_back(cluster);
+            continue;
+        }
+        cluster.x /= cluster.charge;
+        cluster.y /= cluster.charge;
+        for (size_t j = cluster.first; j < cluster.end; ++j) {
+            const auto& panel = solution.panels[j];
+            cluster.radius = std::max({cluster.radius, std::hypot(panel[0] - cluster.x, panel[1] - cluster.y), std::hypot(panel[2] - cluster.x, panel[3] - cluster.y)});
+        }
+        solution.clusters.push_back(cluster);
+    }
+    return cache.emplace(key, std::move(solution)).first->second;
+}
+
+double StrayCapacitance::calculate_rectangle_row_over_plane_capacitance_per_length(double halfAlong, double halfNormal, double edgeRadius,
+                                                                                   double bottomHeight, double pitch) {
+    return solve_rectangle_row_over_plane(halfAlong, halfNormal, edgeRadius, bottomHeight, pitch).capacitancePerLength;
+}
+
+double StrayCapacitance::calculate_rectangular_turn_to_core_capacitance(double conductingHalfAlong, double conductingHalfNormal, double edgeRadius,
+                                                                        double turnLength,
+                                                                        double wireCoatingThickness, double wireCoatingRelativePermittivity,
+                                                                        double airGapToCore,
+                                                                        double coreCoatingThickness, double coreCoatingRelativePermittivity,
+                                                                        double bobbinThickness, double bobbinRelativePermittivity,
+                                                                        double leftNeighbourPitch, double rightNeighbourPitch) {
+    // The round element's construction (calculate_turn_to_core_capacitance) with the conductor's own section: the
+    // copper's lower face sits the stack's air-equivalent thickness above the ferrite, and the element is the
+    // Maxwell row sum of identical rectangles at the row's pitch on either side. A flat conductor is not its
+    // area-equivalent circle: lying flat on the core its whole face is a near parallel plate, edge-on only its
+    // edge faces it, and the circle, wider than the edge-on pitch, overlaps its neighbours.
+    if (!(conductingHalfAlong > 0) || !(conductingHalfNormal > 0) || !(turnLength > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Turn-to-core capacitance of a rectangular conductor with no positive section or length");
+    }
+    const double airEquivalentGap = turn_to_core_air_equivalent_gap(wireCoatingThickness, wireCoatingRelativePermittivity, airGapToCore,
+                                                                    coreCoatingThickness, coreCoatingRelativePermittivity,
+                                                                    bobbinThickness, bobbinRelativePermittivity);
+    const double leftPerLength = calculate_rectangle_row_over_plane_capacitance_per_length(conductingHalfAlong, conductingHalfNormal, edgeRadius,
+                                                                                           airEquivalentGap, leftNeighbourPitch);
+    const double rightPerLength = calculate_rectangle_row_over_plane_capacitance_per_length(conductingHalfAlong, conductingHalfNormal, edgeRadius,
+                                                                                            airEquivalentGap, rightNeighbourPitch);
+    return 0.5 * (leftPerLength + rightPerLength) * turnLength;
+}
+
+std::array<double, 2> StrayCapacitance::rectangle_row_over_plane_potential_gradient(const RectangleRowOverPlaneSolution& solution, double x, double y) {
+    // Far charge as line charges: a cluster of panels beyond four of its radii, else each of its panels beyond four of
+    // its lengths, acts at its charge-weighted centre, to (size / distance)^2 / 12 of its own field (under 0.6 %): for
+    // the row through the closed-form periodic Green's function, which carries every column and image at once;
+    // isolated, the charge and its image. Nearer panels are integrated exactly.
+    double gradientX = 0, gradientY = 0;
+    const bool isolated = std::isinf(solution.period);
+    const double k = isolated ? 0.0 : 2.0 * std::numbers::pi / solution.period;
+    auto distance = [&](double sx, double sy) {
+        return isolated ? std::hypot(x - sx, y - sy) : std::hypot(std::remainder(x - sx, solution.period), y - sy);
+    };
+    auto addLineCharge = [&](double charge, double sx, double sy) {
+        double dx = x - sx;
+        if (isolated) {
+            double sourceSquared = dx * dx + (y - sy) * (y - sy);
+            double imageSquared = dx * dx + (y + sy) * (y + sy);
+            gradientX += charge * (dx / imageSquared - dx / sourceSquared);
+            gradientY += charge * ((y + sy) / imageSquared - (y - sy) / sourceSquared);
+            return;
+        }
+        double angle = k * dx;
+        double cosine = std::cos(angle);
+        double plus = k * (y + sy);
+        double minus = k * (y - sy);
+        auto inverseDenominator = [&](double u) { return std::abs(u) > 40 ? 0.0 : 1.0 / (std::cosh(u) - cosine); };
+        auto sinhOverDenominator = [&](double u) { return std::abs(u) > 40 ? (u > 0 ? 1.0 : -1.0) : std::sinh(u) / (std::cosh(u) - cosine); };
+        gradientX += charge * 0.5 * k * std::sin(angle) * (inverseDenominator(plus) - inverseDenominator(minus));
+        gradientY += charge * 0.5 * k * (sinhOverDenominator(plus) - sinhOverDenominator(minus));
+    };
+    for (const auto& cluster : solution.clusters) {
+        if (distance(cluster.x, cluster.y) > 4 * cluster.radius) {
+            addLineCharge(cluster.charge, cluster.x, cluster.y);
+            continue;
+        }
+        for (size_t j = cluster.first; j < cluster.end; ++j) {
+            const auto& panel = solution.panels[j];
+            double length = std::hypot(panel[2] - panel[0], panel[3] - panel[1]);
+            double mx = (panel[0] + panel[2]) / 2;
+            double my = (panel[1] + panel[3]) / 2;
+            if (distance(mx, my) > 4 * length) {
+                addLineCharge(solution.charges[j] * length, mx, my);
+                continue;
+            }
+            auto gradient = rectangle_panel_potential_gradient(x, y, panel, solution.period);
+            gradientX += solution.charges[j] * gradient[0];
+            gradientY += solution.charges[j] * gradient[1];
+        }
+    }
+    return {gradientX, gradientY};
+}
+
+bool StrayCapacitance::rectangle_row_over_plane_inside(const RectangleRowOverPlaneSolution& solution, double x, double y) {
+    // The rounded rectangle centred at (0, bottomHeight + 1), half extents (halfAlong, 1), corner radius edgeRadius.
+    double dx = std::abs(x) - (solution.halfAlong - solution.edgeRadius);
+    double dy = std::abs(y - solution.bottomHeight - 1.0) - (1.0 - solution.edgeRadius);
+    if (dx > solution.edgeRadius || dy > solution.edgeRadius) {
+        return false;
+    }
+    if (dx > 0 && dy > 0) {
+        return dx * dx + dy * dy < solution.edgeRadius * solution.edgeRadius;
+    }
+    return true;
 }
 
 double StrayCapacitance::core_image_factor(const Core& core, double frequency) {
@@ -2623,7 +3053,10 @@ static std::vector<TurnToCoreFace> turn_to_core_air_gaps(Coil& coil, const Core&
                     otherX = otherAdditionalCoordinates->at(0)[0];
                     otherY = otherAdditionalCoordinates->at(0)[1];
                 }
-                if (std::abs(std::hypot(otherX, otherY) - radius) >= turnOuterRadius) {
+                // A flat turn's row is the turns within its RADIAL half extent (its first dimension): its larger
+                // extent may be the tangential one, which would take the next layer into the row.
+                const double rowHalfWidth = wire.get_type() == WireType::RECTANGULAR ? turnHalfWidth : turnOuterRadius;
+                if (std::abs(std::hypot(otherX, otherY) - radius) >= rowHalfWidth) {
                     continue;  // another layer, not this row
                 }
                 double separation = std::remainder(std::atan2(otherY, otherX) - angle, 2 * std::numbers::pi);
@@ -2717,12 +3150,13 @@ static std::vector<TurnToCoreFace> turn_to_core_air_gaps(Coil& coil, const Core&
     // neighbours and is already carried by the turn-to-turn element. The row facing the column is
     // the turns of the same layer (|x_o - x| under the turn's outer radius, same window side) and
     // the pitch is the centre distance to the nearest one above and below; the row facing a yoke or
-    // plate is the turns at the same height, nearest one radially inward and outward. Only for
-    // round and litz conductors: the row element is a row of CYLINDERS, and the equivalent
-    // cylinder of a flat conductor (turn_to_core_equivalent_radius) is wider than its pitch, so the
-    // row sum has no meaning for it and would throw.
+    // plate is the turns at the same height, nearest one radially inward and outward. For round and
+    // litz conductors the row is a row of cylinders; for rectangular wire a row of identical
+    // rectangles (calculate_rectangular_turn_to_core_capacitance), so a neighbour continues it only in
+    // the same orientation. Foil and planar conductors keep the isolated element: their equivalent
+    // cylinder (turn_to_core_equivalent_radius) is wider than their pitch.
     const double turnOuterRadius = std::max(turnHalfWidth, turnHalfHeight);
-    const bool rowScreening = wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ;
+    const bool rowScreening = wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ || wire.get_type() == WireType::RECTANGULAR;
     const double noNeighbour = std::numeric_limits<double>::infinity();
     // alongColumn: the row runs along the column axis (y); otherwise radially (x).
     auto rectangularRowPitches = [&](bool alongColumn) {
@@ -2746,7 +3180,10 @@ static std::vector<TurnToCoreFace> turn_to_core_air_gaps(Coil& coil, const Core&
             auto otherCoordinates = otherTurn.get_coordinates();
             double across = alongColumn ? otherCoordinates[0] - coordinates[0] : otherCoordinates[1] - coordinates[1];
             double along = alongColumn ? otherCoordinates[1] - coordinates[1] : otherCoordinates[0] - coordinates[0];
-            if (std::abs(across) >= turnOuterRadius) {
+            // A flat turn's row is the turns within its half extent ACROSS the row: its larger extent may lie along
+            // it, which would take the next layer (stacked turns sharing the row coordinate) into the row.
+            const double rowHalfWidth = wire.get_type() == WireType::RECTANGULAR ? (alongColumn ? turnHalfWidth : turnHalfHeight) : turnOuterRadius;
+            if (std::abs(across) >= rowHalfWidth) {
                 continue;  // another layer (or another height), not this row
             }
             if (alongColumn && (otherCoordinates[0] > 0) != (coordinates[0] > 0)) {
@@ -2771,7 +3208,15 @@ static std::vector<TurnToCoreFace> turn_to_core_air_gaps(Coil& coil, const Core&
             }
         }
         auto continuesTheRow = [&](const Turn* neighbour) {
-            return neighbour->get_winding() == turn.get_winding() && neighbour->get_section() == turn.get_section();
+            if (neighbour->get_winding() != turn.get_winding() || neighbour->get_section() != turn.get_section()) {
+                return false;
+            }
+            if (wire.get_type() == WireType::RECTANGULAR) {
+                // A row of identical rectangles: the neighbour lies the same way.
+                auto [neighbourHalfWidth, neighbourHalfHeight] = turn_outer_half_extents(*neighbour);
+                return neighbourHalfWidth == turnHalfWidth && neighbourHalfHeight == turnHalfHeight;
+            }
+            return true;
         };
         if (nearestPositive && !continuesTheRow(nearestPositive)) {
             towardsPositive = noNeighbour;
@@ -2909,6 +3354,17 @@ static std::vector<std::pair<TurnToCoreFace, double>> turn_to_core_face_capacita
     std::vector<std::pair<TurnToCoreFace, double>> faceCapacitances;
     faceCapacitances.reserve(faces.size());
     for (const auto& face : faces) {
+        if (wire.get_type() == WireType::RECTANGULAR) {
+            // A flat conductor faces the core with its own section (calculate_rectangular_turn_to_core_capacitance).
+            auto section = rectangular_conductor_section(wire, turn, face.surface);
+            faceCapacitances.emplace_back(face, StrayCapacitance::calculate_rectangular_turn_to_core_capacitance(
+                section.halfAlong, section.halfNormal, section.edgeRadius, turn.get_length() * face.lengthFraction,
+                wireCoatingThickness, wireCoatingRelativePermittivity,
+                face.airGap, coreCoatingThickness, coreCoatingRelativePermittivity,
+                face.bobbinThickness, bobbinRelativePermittivity,
+                face.leftNeighbourPitch, face.rightNeighbourPitch));
+            continue;
+        }
         faceCapacitances.emplace_back(face, StrayCapacitance::calculate_turn_to_core_capacitance(
             conductingRadius, turn.get_length() * face.lengthFraction,
             wireCoatingThickness, wireCoatingRelativePermittivity,
@@ -4605,6 +5061,13 @@ std::vector<StrayCapacitance::ElectricEnergyElement> StrayCapacitance::calculate
             element.realDistance = face.halfExtentTowardsSurface + std::max(0.0, face.airGap) + face.bobbinThickness + coreCoatingThickness;
             element.positivePitch = face.leftNeighbourPitch;
             element.negativePitch = face.rightNeighbourPitch;
+            if (wire.get_type() == WireType::RECTANGULAR) {
+                auto section = rectangular_conductor_section(wire, turn, face.surface);
+                element.conductor = ElectricEnergyElement::Conductor::RECTANGULAR;
+                element.conductingHalfAlong = section.halfAlong;
+                element.conductingHalfNormal = section.halfNormal;
+                element.conductingEdgeRadius = section.edgeRadius;
+            }
             elements.push_back(element);
         }
     }
@@ -4883,6 +5346,121 @@ static std::vector<CoreFaceSample> core_face_half_samples(double height, double 
     return samples;
 }
 
+// The same for a rectangular conductor (solve_rectangle_row_over_plane), lengths normalised to its half extent normal
+// to the plane: the half x >= 0 (side > 0) or x < 0 of the cell |x| <= p / 2, from the plane up, in a quadtree of
+// Cartesian cells. Each cell carries (eps0 / 2) |grad phi|^2 at its midpoint times its area (nothing inside the
+// conductor). A cell is split while it is larger than the spacing, while it straddles the conductor's contour (down to
+// a sixteenth of the spacing), or while it holds more than 1e-3 of the half's energy (the gap under the conductor and
+// its corners), unless it holds less than 1e-6 of it. A straddling cell that is not split further is read on a 3 x 3
+// grid inside it, its outside points only, so the field next to the copper is not lost to a midpoint inside it. The half's energy is known exactly, C' / 4 (the cell is
+// symmetric): the field is cut off a box a few periods high (exp(-4 pi y / p) beyond it) or, for an isolated conductor,
+// 50 conductor sizes out (the image dipole's energy beyond it is ~1e-3 of the total), and the caller's normalisation
+// carries the remainder.
+static std::vector<CoreFaceSample> rectangle_face_half_samples(const StrayCapacitance::RectangleRowOverPlaneSolution& solution, int side, double spacing) {
+    static thread_local std::map<std::tuple<const void*, int, double>, std::vector<CoreFaceSample>> cache;
+    auto key = std::make_tuple(static_cast<const void*>(&solution), side, spacing);
+    if (auto it = cache.find(key); it != cache.end()) {
+        return it->second;
+    }
+    const double vacuumPermittivity = Constants().vacuumPermittivity;
+    const bool isolated = std::isinf(solution.period);
+    const double size = solution.halfAlong + solution.bottomHeight + 2.0;
+    const double width = isolated ? 50 * size : solution.period / 2;
+    const double height = isolated ? 50 * size : solution.bottomHeight + 2.0 + 3 * solution.period;
+    const double halfEnergy = solution.capacitancePerLength / 4;
+    auto density = [&](double x, double y) {
+        if (StrayCapacitance::rectangle_row_over_plane_inside(solution, x, y)) {
+            return 0.0;
+        }
+        auto gradient = StrayCapacitance::rectangle_row_over_plane_potential_gradient(solution, x, y);
+        return 0.5 * vacuumPermittivity * (gradient[0] * gradient[0] + gradient[1] * gradient[1]);
+    };
+    auto straddlesContour = [&](double x0, double x1, double y0, double y1) {
+        bool anyInside = false, anyOutside = false;
+        for (double x : {x0, x1, (x0 + x1) / 2}) {
+            for (double y : {y0, y1, (y0 + y1) / 2}) {
+                (StrayCapacitance::rectangle_row_over_plane_inside(solution, x, y) ? anyInside : anyOutside) = true;
+            }
+        }
+        // A cell that holds a corner of the contour without any of its test points inside it.
+        bool spansConductor = x0 < solution.halfAlong && x1 > -solution.halfAlong && y0 < solution.bottomHeight + 2.0 && y1 > solution.bottomHeight;
+        return (anyInside && anyOutside) || (spansConductor && !anyInside);
+    };
+    struct Cell { double x0, x1, y0, y1; size_t depth; };
+    const size_t initialCells = 32;
+    const double xLow = side > 0 ? 0.0 : -width;
+    const double xHigh = side > 0 ? width : 0.0;
+    // Square starting cells, 32 along the box's longer side (a half cell of a tight row is tall and narrow: slivers
+    // would be split down to the spacing along their long side and over-resolved along the short one).
+    const double startSize = std::max(xHigh - xLow, height) / static_cast<double>(initialCells);
+    const size_t columns = std::max<size_t>(1, static_cast<size_t>(std::ceil((xHigh - xLow) / startSize - 1e-9)));
+    const size_t rows = std::max<size_t>(1, static_cast<size_t>(std::ceil(height / startSize - 1e-9)));
+    std::vector<Cell> stack;
+    for (size_t i = 0; i < columns; ++i) {
+        for (size_t j = 0; j < rows; ++j) {
+            stack.push_back({xLow + (xHigh - xLow) * i / columns, xLow + (xHigh - xLow) * (i + 1) / columns,
+                             height * j / rows, height * (j + 1) / rows, 0});
+        }
+    }
+    const double negligibleShare = 1e-6;
+    const double resolvedShare = 1e-3;
+    const size_t maximumDepth = 16;
+    std::vector<CoreFaceSample> samples;
+    while (!stack.empty()) {
+        Cell cell = stack.back();
+        stack.pop_back();
+        double xMid = (cell.x0 + cell.x1) / 2;
+        double yMid = (cell.y0 + cell.y1) / 2;
+        double area = (cell.x1 - cell.x0) * (cell.y1 - cell.y0);
+        double cellSize = std::max(cell.x1 - cell.x0, cell.y1 - cell.y0);
+        bool straddles = straddlesContour(cell.x0, cell.x1, cell.y0, cell.y1);
+        double energy = density(xMid, yMid) * area;
+        // A straddling cell's midpoint may lie in the conductor: judge it by its outside corners' field.
+        double scale = energy;
+        if (straddles) {
+            for (double x : {cell.x0, cell.x1}) {
+                for (double y : {cell.y0, cell.y1}) {
+                    scale = std::max(scale, density(x, y) * area);
+                }
+            }
+        }
+        bool matters = scale > negligibleShare * halfEnergy;
+        bool split = matters && (cellSize > spacing || (straddles && cellSize > spacing / 16) || scale > resolvedShare * halfEnergy);
+        if (cell.depth < maximumDepth && split) {
+            double xHalf = (cell.x0 + cell.x1) / 2;
+            double yHalf = (cell.y0 + cell.y1) / 2;
+            stack.push_back({cell.x0, xHalf, cell.y0, yHalf, cell.depth + 1});
+            stack.push_back({xHalf, cell.x1, cell.y0, yHalf, cell.depth + 1});
+            stack.push_back({cell.x0, xHalf, yHalf, cell.y1, cell.depth + 1});
+            stack.push_back({xHalf, cell.x1, yHalf, cell.y1, cell.depth + 1});
+            continue;
+        }
+        if (straddles) {
+            const size_t subdivisions = 3;
+            double subEnergy = 0, subX = 0, subY = 0;
+            for (size_t i = 0; i < subdivisions; ++i) {
+                for (size_t j = 0; j < subdivisions; ++j) {
+                    double x = cell.x0 + (cell.x1 - cell.x0) * (i + 0.5) / subdivisions;
+                    double y = cell.y0 + (cell.y1 - cell.y0) * (j + 0.5) / subdivisions;
+                    double part = density(x, y) * area / (subdivisions * subdivisions);
+                    subEnergy += part;
+                    subX += part * x;
+                    subY += part * y;
+                }
+            }
+            if (subEnergy > 0) {
+                samples.push_back({subX / subEnergy, subY / subEnergy, subEnergy});
+            }
+            continue;
+        }
+        if (energy > 0) {
+            samples.push_back({xMid, yMid, energy});
+        }
+    }
+    cache.emplace(key, samples);
+    return samples;
+}
+
 double StrayCapacitance::sample_electric_energy_element(const ElectricEnergyElement& element, double energyPerLength, double samplingSpacing,
                                                         const EnergySampleCallback& callback) {
     if (!(samplingSpacing > 0)) {
@@ -4989,15 +5567,22 @@ double StrayCapacitance::sample_electric_energy_element(const ElectricEnergyElem
     if (!element.inPlane) {
         return energyPerLength;  // a toroid's top or bottom run: not in the ring plane
     }
-    const double radius = element.conductingRadius;
+    const bool rectangular = element.conductor == ElectricEnergyElement::Conductor::RECTANGULAR;
+    // The length the field's geometry is normalised to: the radius, or a rectangle's half extent normal to the plane.
+    const double radius = rectangular ? element.conductingHalfNormal : element.conductingRadius;
     const double airEquivalentHeight = radius + element.airEquivalentGap;
-    if (!(radius > 0) || !(element.airEquivalentGap > 0) || !(element.realDistance > 0)) {
+    if (!(radius > 0) || !(element.airEquivalentGap > 0) || !(element.realDistance > 0) || (rectangular && !(element.conductingHalfAlong > 0))) {
         throw InvalidInputException(ErrorCode::INVALID_INPUT, "Turn-to-core energy element with a non-physical geometry");
     }
     // The real distance from the axis to the ferrite carries the air-equivalent height: y_real = y * D / H.
     const double heightScale = element.realDistance / airEquivalentHeight;
-    const double positivePerLength = calculate_conductor_row_over_plane_capacitance_per_length(radius, airEquivalentHeight, element.positivePitch);
-    const double negativePerLength = calculate_conductor_row_over_plane_capacitance_per_length(radius, airEquivalentHeight, element.negativePitch);
+    auto perLength = [&](double pitch) {
+        return rectangular ? calculate_rectangle_row_over_plane_capacitance_per_length(element.conductingHalfAlong, element.conductingHalfNormal,
+                                                                                       element.conductingEdgeRadius, element.airEquivalentGap, pitch)
+                           : calculate_conductor_row_over_plane_capacitance_per_length(radius, airEquivalentHeight, pitch);
+    };
+    const double positivePerLength = perLength(element.positivePitch);
+    const double negativePerLength = perLength(element.negativePitch);
     const double cx = element.firstCentre[0];
     const double cy = element.firstCentre[1];
 
@@ -5062,7 +5647,10 @@ double StrayCapacitance::sample_electric_energy_element(const ElectricEnergyElem
     for (int side : {1, -1}) {
         double pitch = side > 0 ? element.positivePitch : element.negativePitch;
         double share = (side > 0 ? positivePerLength : negativePerLength) / (positivePerLength + negativePerLength);
-        auto samples = core_face_half_samples(airEquivalentHeight / radius, pitch / radius, side, normalisedSpacing);
+        auto samples = rectangular ? rectangle_face_half_samples(solve_rectangle_row_over_plane(element.conductingHalfAlong, element.conductingHalfNormal,
+                                                                                                element.conductingEdgeRadius, element.airEquivalentGap, pitch),
+                                                                 side, normalisedSpacing)
+                                   : core_face_half_samples(airEquivalentHeight / radius, pitch / radius, side, normalisedSpacing);
         long double total = 0;  // millions of samples, extended: the shares must add up to the element's energy to rounding
         for (const auto& sample : samples) {
             total += sample.energy;
@@ -5096,6 +5684,18 @@ double StrayCapacitance::integrate_electric_energy_element(const ElectricEnergyE
     if (element.kind == Kind::PLATE_PAIR) {
         // The uniform field of the element is the element: nothing beyond its closed form.
         return element.capacitance / (2 * element.length);
+    }
+    if (element.conductor == ElectricEnergyElement::Conductor::RECTANGULAR) {
+        double energy = 0;
+        for (int side : {1, -1}) {
+            double pitch = side > 0 ? element.positivePitch : element.negativePitch;
+            const auto& solution = solve_rectangle_row_over_plane(element.conductingHalfAlong, element.conductingHalfNormal, element.conductingEdgeRadius,
+                                                                  element.airEquivalentGap, pitch);
+            for (const auto& sample : rectangle_face_half_samples(solution, side, samplingSpacing / element.conductingHalfNormal)) {
+                energy += sample.energy;
+            }
+        }
+        return energy;
     }
     const double radius = element.conductingRadius;
     const double airEquivalentHeight = radius + element.airEquivalentGap;

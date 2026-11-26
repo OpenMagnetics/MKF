@@ -172,6 +172,30 @@ class StrayCapacitance{
         // H <= r, p < 2r, or a solution that does not meet the boundary condition.
         static double calculate_conductor_row_over_plane_capacitance_per_length(double radius, double axisHeight, double pitch);
 
+        // The turn-to-core element of a RECTANGULAR conductor (flat wire), the counterpart of
+        // calculate_turn_to_core_capacitance with the conductor's own section instead of an equivalent
+        // circle: conducting half extents along the core surface and normal to it, its corner radius,
+        // the same dielectric stack (each layer t / eps_r, the air gap measured from the insulation
+        // surface) and the same row screening, element = (C'(p_left) + C'(p_right)) / 2 * length with
+        // C'(p) of calculate_rectangle_row_over_plane_capacitance_per_length.
+        static double calculate_rectangular_turn_to_core_capacitance(double conductingHalfAlong, double conductingHalfNormal, double edgeRadius,
+                                                                     double turnLength,
+                                                                     double wireCoatingThickness, double wireCoatingRelativePermittivity,
+                                                                     double airGapToCore,
+                                                                     double coreCoatingThickness, double coreCoatingRelativePermittivity,
+                                                                     double bobbinThickness = 0.0, double bobbinRelativePermittivity = 1.0,
+                                                                     double leftNeighbourPitch = std::numeric_limits<double>::infinity(),
+                                                                     double rightNeighbourPitch = std::numeric_limits<double>::infinity());
+
+        // Per-unit-length capacitance to a grounded plane of ONE conductor of an infinite periodic row
+        // of equipotential rectangular conductors with rounded corners: half extent halfAlong along the
+        // plane, halfNormal normal to it, corner radius edgeRadius (<= both), the lower face a height
+        // bottomHeight > 0 above the plane, centre-to-centre pitch >= 2 halfAlong (infinity: the
+        // isolated conductor over the plane). Boundary elements with the exact periodic Green's function
+        // of the row and its image (solve_rectangle_row_over_plane).
+        static double calculate_rectangle_row_over_plane_capacitance_per_length(double halfAlong, double halfNormal, double edgeRadius,
+                                                                                double bottomHeight, double pitch);
+
         // Total capacitance from one winding to the (equipotential) ferrite core: the
         // parallel sum of its turns' turn-to-core elements. Two of these in series through
         // the core node give the inter-winding capacitance for separated windings.
@@ -391,6 +415,14 @@ class StrayCapacitance{
         double realDistance = 0;
         double positivePitch = std::numeric_limits<double>::infinity();
         double negativePitch = std::numeric_limits<double>::infinity();
+        // CORE_FACE of a rectangular conductor (flat wire): its field is the rectangle row's
+        // (solve_rectangle_row_over_plane), with these conducting half extents along the surface and normal to it and
+        // this corner radius; conductingRadius is then unused. ROUND: the equivalent-radius cylinder above.
+        enum class Conductor { ROUND, RECTANGULAR };
+        Conductor conductor = Conductor::ROUND;
+        double conductingHalfAlong = 0;
+        double conductingHalfNormal = 0;
+        double conductingEdgeRadius = 0;
     };
   private:
     // Set only while calculate_electric_energy_elements runs calculate_capacitance_among_turns: every pair
@@ -428,6 +460,39 @@ class StrayCapacitance{
     // grad phi (normalised) of a solution at (x, y)
     static std::array<double, 2> conductor_row_over_plane_potential_gradient(const ConductorRowOverPlaneSolution& solution, double x, double y);
 
+    // The boundary-element solution behind calculate_rectangle_row_over_plane_capacitance_per_length, in lengths
+    // normalised to halfNormal and unit conductor potential: the conductor's contour (a rounded rectangle centred
+    // on x = 0, its lower face at y = bottomHeight) in straight panels, each with a uniform charge density, so that
+    // phi(x, y) = sum_j charge_j * integral over panel j of G ds, G the periodic row-and-image Green's function
+    // (the image row alone for an isolated conductor, period infinity). capacitancePerLength = 2 pi eps0 sum
+    // charge_j length_j. The potential is 1 at every panel's midpoint (collocation).
+    struct RectangleRowOverPlaneSolution {
+        double halfAlong = 0;     // normalised to halfNormal
+        double edgeRadius = 0;    // normalised to halfNormal
+        double bottomHeight = 0;  // normalised to halfNormal
+        double period = 0;        // normalised to halfNormal; infinity for the isolated conductor
+        std::vector<std::array<double, 4>> panels;  // x0, y0, x1, y1
+        std::vector<double> charges;
+        double capacitancePerLength = 0;
+        // The panels in consecutive groups along the contour, for the field far from them: each group's total charge
+        // (charge times length) at its charge-weighted centre (radius infinite: never lumped), the panels [first, end), and the group's radius about it.
+        struct Cluster {
+            size_t first = 0;
+            size_t end = 0;
+            double charge = 0;
+            double x = 0;
+            double y = 0;
+            double radius = 0;
+        };
+        std::vector<Cluster> clusters;
+    };
+    static const RectangleRowOverPlaneSolution& solve_rectangle_row_over_plane(double halfAlong, double halfNormal, double edgeRadius,
+                                                                                double bottomHeight, double pitch);
+    // grad phi (normalised) of a solution at (x, y), a point outside the conductor
+    static std::array<double, 2> rectangle_row_over_plane_potential_gradient(const RectangleRowOverPlaneSolution& solution, double x, double y);
+    // Whether (x, y) (normalised) lies inside the solution's conductor.
+    static bool rectangle_row_over_plane_inside(const RectangleRowOverPlaneSolution& solution, double x, double y);
+
     // Spatial distribution of one element's energy per unit length (J/m) in the plane, as weighted points
     // (x, y, J/m) at a spacing finer than samplingSpacing. Each element is sampled with its own field:
     //  - ROUND_PAIR: Albach's flux tubes (straight lines between the coating surfaces, radial in the coating,
@@ -435,7 +500,8 @@ class StrayCapacitance{
     //    capacitor eps0 R cos(phi) dphi / (2 L R cos(phi) + s_eq(phi)) carrying the pair's dV.
     //  - PLATE_PAIR: the uniform field of the parallel-plate element in its gap rectangle.
     //  - CORE_FACE: the field of the conductor (row) over the plane in the air-equivalent geometry, integrated
-    //    in bipolar coordinates, with each half cell at its own pitch, carried to the real geometry (the
+    //    in bipolar coordinates (a rectangular conductor: its boundary-element field on a quadtree of Cartesian
+    //    cells), with each half cell at its own pitch, carried to the real geometry (the
     //    air-equivalent height stretched over the real distance; wrapped around the ring for a toroid).
     // The points carry exactly energyPerLength between them. Returns the energy per length that has no place in
     // the plane (beyond half a toroid surface's circumference).
@@ -444,7 +510,7 @@ class StrayCapacitance{
                                                  const EnergySampleCallback& callback);
     // The energy per unit length, per V^2 of potential difference, that an element's own field integrates to
     // (the physics sample_electric_energy_element distributes): ROUND_PAIR the flux-tube integral, CORE_FACE the
-    // bipolar integral of the (row) field. The closed-form element is capacitance / (2 length).
+    // integral of the (row) field (bipolar, or the rectangle's quadtree). The closed-form element is capacitance / (2 length).
     static double integrate_electric_energy_element(const ElectricEnergyElement& element, double samplingSpacing);
 
     // Internal three-input-multipole matrix used for the floating-node (V3) convergence and exposed

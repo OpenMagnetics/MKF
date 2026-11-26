@@ -3957,6 +3957,118 @@ TEST_CASE("Conductor row over a plane reproduces its closed-form limits", "[phys
     }
 }
 
+// The rectangular conductor's row (flat wire): boundary elements, checked against the limits that have an answer of
+// their own. A rounded rectangle whose corner radius is both half extents is a circle: the cylinder over a plane in
+// closed form, and the circle row's independent charge simulation. Far from the plane any section is its
+// electrostatic equivalent circle (a square of side s: r = 0.5902 s; a thin strip of width w: r = w / 4), and a wide
+// plate close to it is the parallel plate eps0 w / g plus its fringe.
+TEST_CASE("Rectangular conductor row over a plane reproduces its limits", "[physical-model][stray-capacitance][turn-to-core][smoke-test]") {
+    const double eps0 = Constants().vacuumPermittivity;
+    const double infinity = std::numeric_limits<double>::infinity();
+    auto overPlane = [&](double H, double radius) { return 2 * std::numbers::pi * eps0 / std::acosh(H / radius); };
+
+    SECTION("a rectangle rounded into a circle is the cylinder over a plane, and the circle's row") {
+        const double r = 0.25e-3;
+        for (double gap : {0.03 * r, 0.66 * r, 4.0 * r}) {
+            double isolated = StrayCapacitance::calculate_rectangle_row_over_plane_capacitance_per_length(r, r, r, gap, infinity);
+            CHECK_THAT(isolated, WithinRel(overPlane(r + gap, r), 2e-3));
+            for (double pitch : {2.1 * r, 4.0 * r}) {
+                double row = StrayCapacitance::calculate_rectangle_row_over_plane_capacitance_per_length(r, r, r, gap, pitch);
+                double circleRow = StrayCapacitance::calculate_conductor_row_over_plane_capacitance_per_length(r, r + gap, pitch);
+                CHECK_THAT(row, WithinRel(circleRow, 2e-3));
+            }
+        }
+    }
+    SECTION("far from the plane a square and a thin strip are their equivalent circles") {
+        const double side = 1e-3, H = 50e-3;
+        CHECK_THAT(StrayCapacitance::calculate_rectangle_row_over_plane_capacitance_per_length(side / 2, side / 2, 0, H - side / 2, infinity),
+                   WithinRel(overPlane(H, 0.59017 * side), 2e-3));
+        const double width = 2e-3, thickness = 2e-6;
+        CHECK_THAT(StrayCapacitance::calculate_rectangle_row_over_plane_capacitance_per_length(width / 2, thickness / 2, 0, H - thickness / 2, infinity),
+                   WithinRel(overPlane(H, width / 4), 5e-3));
+    }
+    SECTION("a wide plate close to the plane is the parallel plate plus its fringe") {
+        const double width = 10e-3, halfThickness = 0.5e-3;
+        double previous = infinity;
+        for (double gap : {100e-6, 20e-6, 5e-6}) {
+            double ratio = StrayCapacitance::calculate_rectangle_row_over_plane_capacitance_per_length(width / 2, halfThickness, 0, gap, infinity) /
+                           (eps0 * width / gap);
+            CHECK(ratio > 1.0);
+            CHECK(ratio < previous);
+            previous = ratio;
+        }
+        CHECK(previous < 1.02);
+    }
+    SECTION("neighbours screen: the row lies below the isolated conductor and rises with the pitch") {
+        // A 4 x 1.06 mm flat wire edge-on over the core, 0.05 mm air-equivalent below it.
+        const double halfAlong = 0.53e-3, halfNormal = 2e-3, edge = 0.5e-3, gap = 0.05e-3;
+        double isolated = StrayCapacitance::calculate_rectangle_row_over_plane_capacitance_per_length(halfAlong, halfNormal, edge, gap, infinity);
+        double previous = 0;
+        for (double pitch : {1.1e-3, 2e-3, 5e-3, 20e-3}) {
+            double row = StrayCapacitance::calculate_rectangle_row_over_plane_capacitance_per_length(halfAlong, halfNormal, edge, gap, pitch);
+            CHECK(row > previous);
+            CHECK(row < isolated);
+            previous = row;
+        }
+    }
+    SECTION("overlapping conductors, a conductor touching the plane and a corner radius that does not fit are refused") {
+        CHECK_THROWS_AS(StrayCapacitance::calculate_rectangle_row_over_plane_capacitance_per_length(0.5e-3, 2e-3, 0.1e-3, 0.05e-3, 0.9e-3), InvalidInputException);
+        CHECK_THROWS_AS(StrayCapacitance::calculate_rectangle_row_over_plane_capacitance_per_length(0.5e-3, 2e-3, 0.1e-3, 0.0, infinity), InvalidInputException);
+        CHECK_THROWS_AS(StrayCapacitance::calculate_rectangle_row_over_plane_capacitance_per_length(0.5e-3, 2e-3, 0.6e-3, 0.05e-3, infinity), InvalidInputException);
+    }
+    SECTION("the field integrates to the element's energy, C' / 2 per volt squared") {
+        StrayCapacitance::ElectricEnergyElement element;
+        element.kind = StrayCapacitance::ElectricEnergyElement::Kind::CORE_FACE;
+        element.conductor = StrayCapacitance::ElectricEnergyElement::Conductor::RECTANGULAR;
+        element.surface = StrayCapacitance::ElectricEnergyElement::Surface::COLUMN;
+        element.conductingHalfAlong = 0.53e-3;
+        element.conductingHalfNormal = 2e-3;
+        element.conductingEdgeRadius = 0.5e-3;
+        element.airEquivalentGap = 0.05e-3;
+        for (double pitch : {infinity, 1.382e-3}) {
+            element.positivePitch = pitch;
+            element.negativePitch = pitch;
+            double perLength = StrayCapacitance::calculate_rectangle_row_over_plane_capacitance_per_length(0.53e-3, 2e-3, 0.5e-3, 0.05e-3, pitch);
+            CHECK_THAT(StrayCapacitance::integrate_electric_energy_element(element, 0.1e-3), WithinRel(perLength / 2, 2e-2));
+        }
+    }
+}
+
+// A close-wound flat-wire toroid (the web's T 48/28/16 boost inductor of 47 turns of 4 x 1.06 mm wire, and a customer's
+// T 120/70/40 of 7.10 x 4.50 mm): the turns lie at a pitch below the diameter of their area-equivalent circle, which the
+// round row model refused as overlapping conductors although the rectangles do not touch. The rectangle row takes them.
+TEST_CASE("Turn-to-core element of a close-wound flat-wire toroid", "[physical-model][stray-capacitance][turn-to-core][smoke-test]") {
+    struct Design { std::string shape; int64_t turns; std::string wire; };
+    for (const auto& design : {Design{"T 48/28/16", 47, "Rectangular 4x1.06 - Grade 1"}, Design{"T 120/70/40", 38, "Rectangular 7.10x4.50 - Grade 1"}}) {
+        INFO(design.shape + ", " + design.wire);
+        auto wire = OpenMagnetics::find_wire_by_name(design.wire);
+        auto coil = OpenMagneticsTesting::get_quick_coil({design.turns}, {1}, design.shape, 1, WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING,
+                                                         CoilAlignment::SPREAD, CoilAlignment::SPREAD, {wire});
+        auto core = OpenMagneticsTesting::get_quick_core(design.shape, json::array(), 1, "3C97");
+        coil.wind();
+        REQUIRE(coil.get_turns_description());
+        auto turns = coil.get_turns_description().value();
+        REQUIRE(turns.size() == static_cast<size_t>(design.turns));
+        // The premise: neighbours closer than the equivalent circle's diameter.
+        double closest = std::numeric_limits<double>::infinity();
+        for (size_t i = 0; i + 1 < turns.size(); ++i) {
+            auto a = turns[i].get_coordinates();
+            auto b = turns[i + 1].get_coordinates();
+            closest = std::min(closest, std::hypot(a[0] - b[0], a[1] - b[1]));
+        }
+        const double equivalentDiameter = 2 * std::sqrt(wire.get_maximum_conducting_width() * wire.get_maximum_conducting_height() / std::numbers::pi);
+        REQUIRE(closest < equivalentDiameter);
+
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+        double toCore = StrayCapacitance::calculate_winding_to_core_capacitance(coil, core, coil.get_functional_description()[0].get_name());
+        CHECK(std::isfinite(toCore));
+        CHECK(toCore > 0);
+        CHECK_NOTHROW(StrayCapacitance().calculate_capacitance(magnetic));
+    }
+}
+
 TEST_CASE("Turn-to-core element: each side's neighbour screens half the turn", "[physical-model][stray-capacitance][turn-to-core][smoke-test]") {
     const double eps0 = Constants().vacuumPermittivity;
     const double r = 0.25e-3, L = 30e-3, tEnamel = 17e-6, epsEnamel = 3.5, tCase = 0.6e-3, epsCase = 3.6;
