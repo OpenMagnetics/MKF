@@ -48,6 +48,7 @@ namespace std {
 #include <mutex>
 #include "support/Exceptions.h"
 
+#include <unordered_map>
 namespace OpenMagnetics {
 
 // Where a toroid inducing source acts (CoilMesherCenterModel::generate_mesh_inducing_turn).
@@ -1934,15 +1935,24 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                            static_cast<size_t>(point.get_turn_index().value()) < parallelCurrentSplit->flatTurnPerTurn.size() &&
                            parallelCurrentSplit->flatTurnPerTurn[static_cast<size_t>(point.get_turn_index().value())].has_value();
                 }), inducedData.end());
+                // Each cell's two samples, on the conductor's two faces at the cell (the +normal face first): the slab books
+                // the mean of the total field along its faces (see build_flat_cell_field_operator, ABT #2528).
                 for (const auto& flat : parallelCurrentSplit->flatTurns) {
-                    for (double along : flat.cellCentres) {
-                        FieldPoint cellSample;
-                        const auto [sampleX, sampleY] = flat.position(along);
-                        cellSample.set_point(std::vector<double>{sampleX, sampleY});
-                        cellSample.set_label("cellsample");
-                        cellSample.set_turn_index(static_cast<int64_t>(flat.turnIndex));
-                        cellSample.set_turn_length(turns[flat.turnIndex].get_length());
-                        inducedData.push_back(cellSample);
+                    const double normalX = flat.wideAlongX ? -std::sin(flat.angle) : std::cos(flat.angle);
+                    const double normalY = flat.wideAlongX ? std::cos(flat.angle) : std::sin(flat.angle);
+                    for (size_t cellIndex = 0; cellIndex < flat.cellCentres.size(); ++cellIndex) {
+                        if (!flat.cellScreened.at(cellIndex)) {
+                            continue;  // an end piece is booked from its own current alone
+                        }
+                        const auto [lineX, lineY] = flat.position(flat.cellCentres[cellIndex]);
+                        for (double side : {1.0, -1.0}) {
+                            FieldPoint cellSample;
+                            cellSample.set_point(std::vector<double>{lineX + side * normalX * flat.cellHeights.at(cellIndex) / 2, lineY + side * normalY * flat.cellHeights.at(cellIndex) / 2});
+                            cellSample.set_label("cellsample");
+                            cellSample.set_turn_index(static_cast<int64_t>(flat.turnIndex));
+                            cellSample.set_turn_length(turns[flat.turnIndex].get_length());
+                            inducedData.push_back(cellSample);
+                        }
                     }
                 }
             }
@@ -5757,6 +5767,9 @@ std::vector<FlatCellSource> build_flat_cell_sources(const std::vector<FlatTurnCe
             const double along = flat.cellCentres[cellIndex];
             const double halfCell = flat.cellWidths[cellIndex] / 2;
             for (int kind : {0, 1, -1}) {
+                if (kind != 0 && !flat.cellScreened.at(cellIndex)) {
+                    continue;  // an end piece has no face sheets (FlatTurnCells::cellScreened)
+                }
                 FlatCellSource source;
                 source.flatIndex = flatIndex;
                 source.cellIndex = cellIndex;
@@ -5764,9 +5777,10 @@ std::vector<FlatCellSource> build_flat_cell_sources(const std::vector<FlatTurnCe
                 source.turnIndex = flat.turnIndex;
                 source.kind = kind;
                 source.sign = kind == 0 ? 1.0 : flat_face_sign(flat.wideAlongX, kind);
-                // Across the thin axis: the cell spans the thickness; a face sheet sits just inside its face.
-                const double offset = kind == 0 ? 0.0 : kind * (flat.thickness / 2 - sheetThickness / 2);
-                const double halfThin = kind == 0 ? flat.thickness / 2 : sheetThickness / 2;
+                // Across the thin axis: the cell spans its height (the thickness, or an end piece's share of it); a face
+                // sheet sits just inside the conductor's face (a piece's sheets carry nothing, see reaction_per_field_at).
+                const double offset = kind == 0 ? flat.cellOffsets.at(cellIndex) : kind * (flat.cellHeights.at(cellIndex) / 2 - sheetThickness / 2);
+                const double halfThin = kind == 0 ? flat.cellHeights.at(cellIndex) / 2 : sheetThickness / 2;
                 if (flat.angle == 0) {
                     if (flat.wideAlongX) {
                         source.section.x = along;
@@ -5854,7 +5868,7 @@ std::shared_ptr<const FlatCellFieldOperator> build_flat_cell_field_operator(cons
     }
     auto result = std::make_shared<FlatCellFieldOperator>();
     std::vector<size_t> cellSourcePerCell(numberCells);
-    std::vector<std::array<size_t, 2>> faceSourcesPerCell(numberCells);
+    std::vector<std::vector<size_t>> faceSourcesPerCell(numberCells);  // none for an end piece
     std::vector<std::vector<size_t>> cellsPerTurn(turns.size());
     result->flatIndexPerCell.assign(numberCells, 0);
     result->cellIndexPerCell.assign(numberCells, 0);
@@ -5867,7 +5881,7 @@ std::shared_ptr<const FlatCellFieldOperator> build_flat_cell_field_operator(cons
             cellsPerTurn.at(source.turnIndex).push_back(source.globalCell);
         }
         else {
-            faceSourcesPerCell[source.globalCell][source.kind > 0 ? 0 : 1] = sourceIndex;
+            faceSourcesPerCell[source.globalCell].push_back(sourceIndex);
         }
     }
     std::vector<size_t> pointPerRow;
@@ -6014,21 +6028,22 @@ std::shared_ptr<const FlatCellFieldOperator> build_flat_cell_field_operator(cons
         result->fieldX = std::move(components[0]);
         result->fieldY = std::move(components[1]);
     }
-    // A turn's own conductor, taken back out: its cells reach its own cell samples (the slab's external field holds the
-    // other cells of the strip) but not the sample at a cell's own centre (a rectangle's own field vanishes there); its
-    // face sheets reach none of its points (the slab's own screening); every other point of the turn takes none of its own
-    // field, as for any turn (the skin model's). Its images always count.
+    // A turn's own conductor, taken back out of every point of the turn but its cell samples, as for any turn (the skin
+    // model's). The cell samples, on the conductor's faces, keep it: the slab is fed the mean of the TOTAL field along its
+    // two faces (ABT #2528). The turn's net current is coplanar and leaves that mean, but its screening does not stay
+    // inside a strip of finite width: on the gapped ETD 49 stack of 2 x 1 mm bars the field along their faces without it
+    // was 0.72x 2-D OMFEM's on every bar, with it the channels between the bars read OMFEM's field.
     for (size_t row = 0; row < pointPerRow.size(); ++row) {
         const auto& point = inducedPoints[pointPerRow[row]];
         const auto inducedTurn = point.get_turn_index();
         if (!inducedTurn || inducedTurn.value() < 0 || static_cast<size_t>(inducedTurn.value()) >= turns.size()) {
             continue;
         }
-        const bool cellSample = point.get_label() && point.get_label().value() == "cellsample";
+        if (point.get_label() && point.get_label().value() == "cellsample") {
+            continue;
+        }
         for (size_t cell : cellsPerTurn[static_cast<size_t>(inducedTurn.value())]) {
-            auto ownCell = column_field(row, cell, [&](const FlatCellSource&, const FlatCellSource::Image& image, double dx, double dy) {
-                return !image.isImage && (!cellSample || (dx == 0 && dy == 0));
-            });
+            auto ownCell = column_field(row, cell, [](const FlatCellSource&, const FlatCellSource::Image& image, double, double) { return !image.isImage; });
             auto ownFaces = column_field(row, numberCells + cell, [](const FlatCellSource&, const FlatCellSource::Image& image, double, double) { return !image.isImage; });
             result->fieldX.add_sparse(row, cell, -ownCell.first);
             result->fieldY.add_sparse(row, cell, -ownCell.second);
@@ -6096,6 +6111,137 @@ std::vector<double> FlatTurnCells::calculate_cell_widths(double width, double th
     std::vector<double> widths = half;
     widths.insert(widths.end(), half.rbegin(), half.rend());
     return widths;
+}
+
+std::vector<double> FlatTurnCells::calculate_end_piece_heights(double thickness, double edgeCellWidth) {
+    if (!(edgeCellWidth > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Width cells: the end pieces need a positive edge cell width, got " + std::to_string(edgeCellWidth));
+    }
+    if (!(thickness > 2 * edgeCellWidth)) {
+        return {};
+    }
+    std::vector<double> half;
+    double filled = 0;
+    double height = edgeCellWidth;
+    while (filled + height < thickness / 2) {
+        half.push_back(height);
+        filled += height;
+        if (half.size() >= 2) {
+            height *= cellGrowth;
+        }
+    }
+    const double rest = thickness / 2 - filled;
+    if (rest > 0) {
+        if (!half.empty() && rest < half.back() / 2) {
+            half.back() += rest;
+        }
+        else {
+            half.push_back(rest);
+        }
+    }
+    std::vector<double> heights = half;
+    heights.insert(heights.end(), half.rbegin(), half.rend());
+    return heights;
+}
+
+double FlatTurnCells::calculate_mean_half_thickness(double thickness, double edgeRadius, double nearEnd, double farEnd) {
+    if (!(edgeRadius >= 0) || !(edgeRadius <= thickness / 2 * (1 + 1e-9))) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Width cells: edge radius " + std::to_string(edgeRadius) + " m is not between 0 and half the thickness " +
+                                    std::to_string(thickness / 2) + " m");
+    }
+    if (!(farEnd > nearEnd) || nearEnd < 0) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Width cells: no stretch of the conductor between " + std::to_string(nearEnd) + " and " + std::to_string(farEnd) + " m from its end");
+    }
+    const double r = std::min(edgeRadius, thickness / 2);
+    if (r == 0 || nearEnd >= r) {
+        return thickness / 2;
+    }
+    // Within r of the end the half-thickness is t/2 - r + sqrt(r^2 - (r - u)^2); integrate it with s = r - u.
+    const auto arc = [r](double s) { return (s * std::sqrt(std::max(0.0, r * r - s * s)) + r * r * std::asin(std::clamp(s / r, -1.0, 1.0))) / 2; };
+    const double roundedEnd = std::min(farEnd, r);
+    const double rounded = (thickness / 2 - r) * (roundedEnd - nearEnd) + arc(r - nearEnd) - arc(r - roundedEnd);
+    const double straight = (farEnd - roundedEnd) * thickness / 2;
+    return (rounded + straight) / (farEnd - nearEnd);
+}
+
+void FlatTurnCells::cut_end_cells_into_pieces(FlatTurnCells& flat, double edgeCellWidth) {
+    const size_t numberColumns = flat.cellWidths.size();
+    if (flat.cellCentres.size() != numberColumns || flat.cellLengthRatios.size() != numberColumns || numberColumns == 0) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Width cells: " + std::to_string(numberColumns) + " cell widths, " + std::to_string(flat.cellCentres.size()) +
+                                    " centres and " + std::to_string(flat.cellLengthRatios.size()) + " length ratios");
+    }
+    // The pieces are graded from endPieceFirstHeightInEdgeCells edge cells at the faces (half a skin depth), from one edge
+    // cell at an end near a gap mouth (FlatTurnCells::startNearGap).
+    const double pieceEdge = edgeCellWidth * endPieceFirstHeightInEdgeCells;
+    const bool pieces = !calculate_end_piece_heights(flat.thickness, pieceEdge).empty();
+    const double widest = endPieceWidthInEdgeCells * edgeCellWidth * (1 + 1e-9);
+    const double start = flat.cellCentres.front() - flat.cellWidths.front() / 2;
+    const double stop = flat.cellCentres.back() + flat.cellWidths.back() / 2;
+    // A column no wider than a skin depth is cut into pieces (they resolve the end face); every column reaching into the
+    // rounded edges is as thick as the outline's mean over its width (a full cell there is thinner than the conductor).
+    std::vector<bool> cut(numberColumns, false);
+    if (pieces) {
+        for (size_t column = 0; column < numberColumns && flat.cellWidths[column] <= widest; ++column) {
+            cut[column] = true;
+        }
+        for (size_t column = numberColumns; column > 0 && flat.cellWidths[column - 1] <= widest; --column) {
+            cut[column - 1] = true;
+        }
+    }
+    std::vector<double> centres, widths, lengthRatios, offsets, heights;
+    std::vector<bool> screened;
+    for (size_t column = 0; column < numberColumns; ++column) {
+        const double columnLeft = flat.cellCentres[column] - flat.cellWidths[column] / 2;
+        if (!cut[column]) {
+            const double fromStart = columnLeft - start;
+            const double fromStop = stop - (columnLeft + flat.cellWidths[column]);
+            const double nearEnd = std::max(0.0, std::min(fromStart, fromStop));
+            centres.push_back(flat.cellCentres[column]);
+            widths.push_back(flat.cellWidths[column]);
+            lengthRatios.push_back(flat.cellLengthRatios[column]);
+            offsets.push_back(0.0);
+            heights.push_back(2 * calculate_mean_half_thickness(flat.thickness, flat.edgeRadius, nearEnd, nearEnd + flat.cellWidths[column]));
+            screened.push_back(true);
+            continue;
+        }
+        // A column wider than a skin depth (four edge cells) is split into equal sub-columns no wider than that first.
+        const size_t parts = static_cast<size_t>(std::ceil(flat.cellWidths[column] / widest));
+        const double partWidth = flat.cellWidths[column] / static_cast<double>(parts);
+        for (size_t part = 0; part < parts; ++part) {
+            const double partLeft = columnLeft + static_cast<double>(part) * partWidth;
+            const double fromStart = partLeft - start;
+            const double fromStop = stop - (partLeft + partWidth);
+            const double nearEnd = std::max(0.0, std::min(fromStart, fromStop));
+            // The sub-column's height is the outline's mean over its width (its area is the conductor's there); pieces are
+            // graded from its faces inwards as on a full-thickness column.
+            const double localThickness = 2 * calculate_mean_half_thickness(flat.thickness, flat.edgeRadius, nearEnd, nearEnd + partWidth);
+            const bool nearGap = fromStart <= fromStop ? flat.startNearGap : flat.stopNearGap;
+            std::vector<double> pieceHeights = calculate_end_piece_heights(localThickness, nearGap ? edgeCellWidth : pieceEdge);
+            if (pieceHeights.empty()) {
+                pieceHeights = {localThickness};
+            }
+            double bottom = -localThickness / 2;
+            for (double height : pieceHeights) {
+                centres.push_back(partLeft + partWidth / 2);
+                widths.push_back(partWidth);
+                lengthRatios.push_back(flat.cellLengthRatios[column]);
+                offsets.push_back(bottom + height / 2);
+                heights.push_back(height);
+                screened.push_back(false);
+                bottom += height;
+            }
+        }
+    }
+    flat.cellCentres = std::move(centres);
+    flat.cellWidths = std::move(widths);
+    flat.cellLengthRatios = std::move(lengthRatios);
+    flat.cellOffsets = std::move(offsets);
+    flat.cellHeights = std::move(heights);
+    flat.cellScreened = std::move(screened);
+    flat.cellArea = 0;
+    for (size_t cell = 0; cell < flat.cellWidths.size(); ++cell) {
+        flat.cellArea += flat.cellWidths[cell] * flat.cellHeights[cell];
+    }
 }
 
 std::vector<double> FlatTurnCells::refine_cell_widths_near_gaps(const std::vector<double>& cellWidths, double start, double across, bool wideAlongX,
@@ -6388,15 +6534,45 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             flat.wideAlongX = width >= height;
             flat.thickness = thin;
             flat.width = wide;
+            // A rectangular wire's ends are rounded with its edgeRadius. Without one it is sharp-edged, as foil and planar
+            // conductors are (Alf 2026-11-25: a missing edgeRadius means sharp corners). No rectangle has a corner wider than
+            // half its thickness: such a radius is bad data and throws (MAS carried 46 of them, t/2 rounded up, ABT #2528).
+            if (wire.get_type() == WireType::RECTANGULAR && wire.get_edge_radius()) {
+                flat.edgeRadius = resolve_dimensional_values(wire.get_edge_radius().value());
+                if (!(flat.edgeRadius >= 0) || flat.edgeRadius > thin / 2 * (1 + 1e-9)) {
+                    throw InvalidInputException(ErrorCode::INVALID_INPUT, "Width cells: the wire of turn " + turns[turnIndex].get_name() + " has an edge radius of " +
+                                                std::to_string(flat.edgeRadius * 1e3) + " mm, more than half its conducting thickness of " +
+                                                std::to_string(thin * 1e3) + " mm");
+                }
+                flat.edgeRadius = std::min(flat.edgeRadius, thin / 2);  // within rounding of t/2
+            }
             flat.centreX = turns[turnIndex].get_coordinates()[0];
             flat.centreY = turns[turnIndex].get_coordinates()[1];
             // The edge cells resolve half a skin depth at the fundamental when that is under a thickness (calculate_cell_widths).
-            const double edgeCellWidth = std::min(thin, WindingSkinEffectLosses::calculate_skin_depth(wire, fundamentalFrequency, temperature) / 2);
+            const double edgeCellWidth = std::min(thin, WindingSkinEffectLosses::calculate_skin_depth(wire, fundamentalFrequency, temperature) / 4);
             flat.cellWidths = FlatTurnCells::calculate_cell_widths(wide, thin, edgeCellWidth);
             const double alongCentre = flat.along(flat.centreX, flat.centreY);
             if (!ringModel) {
                 flat.cellWidths = FlatTurnCells::refine_cell_widths_near_gaps(flat.cellWidths, alongCentre - wide / 2,
                                                                              flat.wideAlongX ? flat.centreY : flat.centreX, flat.wideAlongX, thin, gapMouths);
+            }
+            // An end within gapEndFinePiecesInThicknesses thicknesses of a gap mouth keeps the finer pieces (the fringing
+            // field concentrates its current there).
+            if (!ringModel) {
+                const double across = flat.wideAlongX ? flat.centreY : flat.centreX;
+                auto near_gap = [&](double endAlong) {
+                    const double px = flat.wideAlongX ? endAlong : across;
+                    const double py = flat.wideAlongX ? across : endAlong;
+                    for (const auto& mouth : gapMouths) {
+                        const double dy = py < mouth.y0 ? mouth.y0 - py : (py > mouth.y1 ? py - mouth.y1 : 0.0);
+                        if (std::hypot(px - mouth.x, dy) < FlatTurnCells::gapEndFinePiecesInThicknesses * thin) {
+                            return true;
+                        }
+                    }
+                    return false;
+                };
+                flat.startNearGap = near_gap(alongCentre - wide / 2);
+                flat.stopNearGap = near_gap(alongCentre + wide / 2);
             }
             double edge = alongCentre - wide / 2;
             for (double cellWidth : flat.cellWidths) {
@@ -6436,6 +6612,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                     flat.cellLengthRatios.assign(flat.cellWidths.size(), flat.conductorLengthRatio);
                 }
             }
+            FlatTurnCells::cut_end_cells_into_pieces(flat, edgeCellWidth);
             split.flatTurnPerTurn[turnIndex] = split.flatTurns.size();
             split.flatTurns.push_back(std::move(flat));
         }
@@ -6774,6 +6951,8 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
     size_t numberCells = 0;
     std::vector<double> cellWidth;
     std::vector<size_t> flatTurnPerCell;
+    std::vector<size_t> cellIndexPerGlobalCell;  // each cell's index within its flat turn
+    std::vector<char> cellHasSheets;  // per cell: its face sheets exist (an end piece has none, so its field feeds nothing)
     // The geometric operators of the cells: the mean potential over each element and the field along each cell's faces,
     // per unit current of every element and per unit D of every cell's face sheets. They depend on the geometry alone
     // (sections, images, walls), not on frequency or temperature. Each is a hierarchical matrix (far pairs of clusters in
@@ -6787,6 +6966,9 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
         HierarchicalMatrix elementReactionPotential;  // per unit D of a cell's face sheets
         HierarchicalMatrix cellFieldPerElement;       // H along the faces at each cell, per unit J_e (walls apart)
         HierarchicalMatrix cellFieldPerReaction;      // per unit D of a cell's face sheets (own turn's sheets included)
+        // The three cell operators above run over the cells with face sheets only (an end piece has none: its rows and
+        // columns are zero), in this order of the cells' indices.
+        std::vector<size_t> sheetCells;
         // The preconditioner's groups: turns that lie together (neighbours couple the most), with their elements and cells.
         // Per group, its exact blocks with itself, row-major: elements x elements, elements x cells, cells x elements,
         // cells x cells, in the order of the group's elements and cells.
@@ -6796,8 +6978,6 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
         std::vector<std::vector<double>> reactionPotentialPerGroup;
         std::vector<std::vector<double>> fieldPerElementPerGroup;
         std::vector<std::vector<double>> fieldPerReactionPerGroup;
-        // Per cell, the field its own turn's face sheets (not their images) put at it, per unit D of each: (cell, value).
-        std::vector<std::vector<std::pair<size_t, double>>> ownFaceFieldPerCell;
         size_t stored_values() const {
             size_t values = elementPotential.stored_values() + elementReactionPotential.stored_values() + cellFieldPerElement.stored_values() +
                             cellFieldPerReaction.stored_values() + key.size();
@@ -6847,9 +7027,11 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
     }
     if (flatCells) {
         for (const auto& flat : split.flatTurns) {
-            for (double width : flat.cellWidths) {
-                cellWidth.push_back(width);
+            for (size_t cellIndex = 0; cellIndex < flat.cellWidths.size(); ++cellIndex) {
+                cellWidth.push_back(flat.cellWidths[cellIndex]);
                 flatTurnPerCell.push_back(static_cast<size_t>(&flat - split.flatTurns.data()));
+                cellIndexPerGlobalCell.push_back(cellIndex);
+                cellHasSheets.push_back(flat.cellScreened.at(cellIndex) ? 1 : 0);
             }
         }
         numberCells = cellWidth.size();
@@ -6878,7 +7060,9 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                         element.isImage.push_back(image.isImage);
                     }
                     // The turn's DC resistance over the cell's share of its section, over the cell's own length.
-                    element.resistancePerLength = resistancePerLength * flat.width / flat.cellWidths[source.cellIndex] * flat.cellLengthRatios.at(source.cellIndex);
+                    // (a cell's share is its width times its height over the area all the turn's cells hold).
+                    element.resistancePerLength = resistancePerLength * flat.cellArea / (flat.cellWidths[source.cellIndex] * flat.cellHeights.at(source.cellIndex)) *
+                                                  flat.cellLengthRatios.at(source.cellIndex);
                     element.globalCell = source.globalCell;
                     element.kernel = source.kernel;
                     element.rectangle = true;
@@ -7006,7 +7190,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
         std::vector<bool> cellAlongX(numberCells);
         std::vector<double> cellAngle(numberCells, 0.0);
         std::vector<size_t> cellTurn(numberCells);
-        std::vector<std::array<size_t, 2>> faceSourcesPerCell(numberCells);
+        std::vector<std::vector<size_t>> faceSourcesPerCell(numberCells);  // none for an end piece
         for (size_t sourceIndex = 0; sourceIndex < cellSources.size(); ++sourceIndex) {
             const auto& source = cellSources[sourceIndex];
             if (source.kind == 0) {
@@ -7017,7 +7201,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                 cellTurn[source.globalCell] = source.turnIndex;
             }
             else {
-                faceSourcesPerCell[source.globalCell][source.kind > 0 ? 0 : 1] = sourceIndex;
+                faceSourcesPerCell[source.globalCell].push_back(sourceIndex);
             }
         }
         cellsPerTurn.assign(turns.size(), {});
@@ -7040,6 +7224,9 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
         if (multiWindowFrame) {
             wallFieldPerCellPerWinding.assign(numberCells, std::vector<double>(numberWindings, 0.0));
             for (size_t cell = 0; cell < numberCells; ++cell) {
+                if (!cellHasSheets[cell]) {
+                    continue;  // an end piece's field feeds nothing
+                }
                 const auto fieldPerWinding = wallModel.get_window_boundary_field_per_winding(cellX[cell], cellY[cell]);
                 for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
                     wallFieldPerCellPerWinding[cell][windingIndex] = along_faces(cell, fieldPerWinding[windingIndex]);
@@ -7048,6 +7235,9 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
         }
         else if (!ringModel) {
             for (size_t cell = 0; cell < numberCells; ++cell) {
+                if (!cellHasSheets[cell]) {
+                    continue;  // an end piece's field feeds nothing
+                }
                 wallFieldPerCell[cell] = along_faces(cell, wallModel.get_window_boundary_field(cellX[cell], cellY[cell], 1.0));
             }
         }
@@ -7111,6 +7301,9 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             }
             slotFieldPerCell.assign(numberCells, std::vector<double>(numberPieces, 0.0));
             for (size_t cell = 0; cell < numberCells; ++cell) {
+                if (!cellHasSheets[cell]) {
+                    continue;  // an end piece's field feeds nothing
+                }
                 const auto pieceFields = slotCorrection->piece_fields(slotCorrection->point_basis(cellX[cell], cellY[cell]));
                 for (size_t piece = 0; piece < numberPieces; ++piece) {
                     slotFieldPerCell[cell][piece] = along_faces(cell, pieceFields[piece]);
@@ -7264,6 +7457,35 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
         for (size_t element = 0; element < conductorWeightPerElement.size(); ++element) {
             conductorWeightPerElement[element] = conductor_weight_of_element(element);
         }
+        // The conductor's own term between two axis-aligned rectangles depends only on their sizes and relative position:
+        // a winding's flat turns repeat it from turn to turn (every end piece of every bar), so it is kept per relative
+        // geometry, rounded to a picometre (ABT #2528).
+        struct MeanLogKey {
+            int64_t v[6];
+            bool operator==(const MeanLogKey& o) const { return std::equal(std::begin(v), std::end(v), std::begin(o.v)); }
+        };
+        struct MeanLogKeyHash {
+            size_t operator()(const MeanLogKey& k) const {
+                size_t h = 1469598103934665603ULL;
+                for (auto x : k.v) { h ^= static_cast<size_t>(x); h *= 1099511628211ULL; }
+                return h;
+            }
+        };
+        std::unordered_map<MeanLogKey, double, MeanLogKeyHash> conductorMeanLog;
+        auto conductor_mean_log = [&](const SplitSection& target, const SplitSection& image) {
+            if (target.angle != 0 || image.angle != 0 || target.round || image.round) {
+                return split_mean_log(target, image);
+            }
+            auto q = [](double x) { return static_cast<int64_t>(std::llround(x * 1e12)); };
+            const MeanLogKey key{{q(image.x - target.x), q(image.y - target.y), q(target.halfWidth), q(target.halfHeight), q(image.halfWidth), q(image.halfHeight)}};
+            auto found = conductorMeanLog.find(key);
+            if (found != conductorMeanLog.end()) {
+                return found->second;
+            }
+            const double value = split_mean_log(target, image);
+            conductorMeanLog.emplace(key, value);
+            return value;
+        };
         auto potential_entry = [&](size_t target, size_t source) {
             if (elementWindow) {
                 double linkage = 0;
@@ -7286,7 +7508,8 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                 }
                 const auto& [image, weight] = images[k];
                 if (toroidRegions.reaches(image, targetSection.x, targetSection.y)) {
-                    potential -= weight * split_mean_log(targetSection, image);
+                    const bool conductor = elements[source].isImage.empty() ? !imageFlagsPerTurn[elements[source].turnIndex].at(k) : !elements[source].isImage[k];
+                    potential -= weight * (conductor ? conductor_mean_log(targetSection, image) : split_mean_log(targetSection, image));
                 }
             }
             if (elementFarLattice.valid) {
@@ -7388,12 +7611,12 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
         // The face sheets of a cell at another: with `own`, only the conductor's own sheets (not their images). The split
         // takes every sheet, its own turn's included (the slab relation holds the field inside the conductor, see
         // reaction_per_field_at); the own sheets are kept apart only to report the field from outside the slab.
-        auto face_field = [&](size_t cell, size_t other, bool ownOnly) {
+        auto face_field = [&](size_t cell, size_t other) {
             double total = 0;
             for (size_t face : faceSourcesPerCell[other]) {
                 const auto& source = cellSources[face];
                 double field = 0;
-                const bool farTable = sheetFarLattice.valid && !ownOnly;
+                const bool farTable = sheetFarLattice.valid;
                 for (size_t k = 0; k < source.images.size(); ++k) {
                     const auto& image = source.images[k];
                     if (farTable && !image.isImage) {
@@ -7403,7 +7626,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                     if (farTable && sheetFarLattice.classPerImage[k] >= 0) {
                         continue;
                     }
-                    if ((ownOnly && image.isImage) || !toroidRegions.reaches(image, cellX[cell], cellY[cell])) {
+                    if (!toroidRegions.reaches(image, cellX[cell], cellY[cell])) {
                         continue;
                     }
                     field += along_faces(cell, turned_rectangle_field(source.kernel, source.section.angle, cellX[cell] - image.x, cellY[cell] - image.y, image.weight));
@@ -7414,8 +7637,8 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                 }
                 total += source.sign * field;
             }
-            // The walls' reply to a cell's face sheets reaches every cell (never taken back out with the own sheets).
-            if (elementWindow && !ownOnly) {
+            // The walls' reply to a cell's face sheets reaches every cell.
+            if (elementWindow) {
                 total += correction_along_faces(cell, correctionPerFacePair[other]);
             }
             return total;
@@ -7548,7 +7771,6 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             std::vector<GroupRecord> reactionPotentialRecords(numberGroups);
             std::vector<GroupRecord> fieldPerElementRecords(numberGroups);
             std::vector<GroupRecord> faceFieldRecords(numberGroups);     // face_field(cell, other, false)
-            std::vector<GroupRecord> ownFaceFieldRecords(numberGroups);  // face_field(cell, other, true), same turn
             for (size_t group = 0; group < numberGroups; ++group) {
                 const size_t groupElements = freshOperators.elementsPerGroup[group].size();
                 const size_t groupCells = freshOperators.cellsPerGroup[group].size();
@@ -7556,18 +7778,31 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                 reactionPotentialRecords[group].resize(groupElements * groupCells);
                 fieldPerElementRecords[group].resize(groupCells * groupElements);
                 faceFieldRecords[group].resize(groupCells * groupCells);
-                ownFaceFieldRecords[group].resize(groupCells * groupCells);
             }
+            // The element potential is symmetric in a window's plane: each image is a reflection or a translation of its
+            // conductor, so the mean log between a target and an image of a source is that between the source and the
+            // same image of the target. A group pair already evaluated the other way round is taken from its record.
+            // (Not in a round-post window, which divides by the target's radius, nor in a toroid's regions.)
+            const bool symmetricPotential = !elementWindow && !toroidRegions.toroid;
             auto recorded_potential_entry = [&](size_t target, size_t source) {
-                const double value = potential_entry(target, source);
                 const size_t group = groupPerElement[target];
+                if (symmetricPotential && group == groupPerElement[source]) {
+                    const size_t transposed = slotPerElement[source] * freshOperators.elementsPerGroup[group].size() + slotPerElement[target];
+                    if (potentialRecords[group].known[transposed]) {
+                        const double reused = potentialRecords[group].values[transposed];
+                        potentialRecords[group].keep(slotPerElement[target] * freshOperators.elementsPerGroup[group].size() + slotPerElement[source], reused);
+                        return reused;
+                    }
+                }
+                const double value = potential_entry(target, source);
                 if (group == groupPerElement[source]) {
                     potentialRecords[group].keep(slotPerElement[target] * freshOperators.elementsPerGroup[group].size() + slotPerElement[source], value);
                 }
                 return value;
             };
+            // An end piece has no face sheets: no potential per unit of its D, and its own field feeds no equation.
             auto recorded_reaction_potential_entry = [&](size_t target, size_t cell) {
-                const double value = reaction_potential_entry(target, cell);
+                const double value = cellHasSheets[cell] ? reaction_potential_entry(target, cell) : 0.0;
                 const size_t group = groupPerElement[target];
                 if (group == groupPerCell[cell]) {
                     reactionPotentialRecords[group].keep(slotPerElement[target] * freshOperators.cellsPerGroup[group].size() + slotPerCell[cell], value);
@@ -7575,38 +7810,44 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                 return value;
             };
             auto recorded_field_per_element_entry = [&](size_t cell, size_t source) {
-                const double value = field_per_element_entry(cell, source);
+                const double value = cellHasSheets[cell] ? field_per_element_entry(cell, source) : 0.0;
                 const size_t group = groupPerCell[cell];
                 if (group == groupPerElement[source]) {
                     fieldPerElementRecords[group].keep(slotPerCell[cell] * freshOperators.elementsPerGroup[group].size() + slotPerElement[source], value);
                 }
                 return value;
             };
-            auto recorded_face_field = [&](size_t cell, size_t other, bool ownOnly) {
-                const double value = face_field(cell, other, ownOnly);
+            auto recorded_face_field = [&](size_t cell, size_t other) {
+                const double value = cellHasSheets[cell] && cellHasSheets[other] ? face_field(cell, other) : 0.0;
                 const size_t group = groupPerCell[cell];
                 if (group == groupPerCell[other]) {
-                    auto& records = ownOnly ? ownFaceFieldRecords : faceFieldRecords;
-                    records[group].keep(slotPerCell[cell] * freshOperators.cellsPerGroup[group].size() + slotPerCell[other], value);
+                    faceFieldRecords[group].keep(slotPerCell[cell] * freshOperators.cellsPerGroup[group].size() + slotPerCell[other], value);
                 }
                 return value;
             };
             // Every kernel below is gated by toroidRegions.reaches, so it changes form with the point's region or window.
             const HierarchicalMatrix::PointForm form = [&](const std::array<double, 2>& point) { return toroidRegions.form_at(point); };
             freshOperators.elementPotential = HierarchicalMatrix(elementPoints, elementPoints, recorded_potential_entry, splitOperatorTolerance, form);
-            freshOperators.elementReactionPotential =
-                HierarchicalMatrix(elementPoints, cellPoints, recorded_reaction_potential_entry, splitOperatorTolerance, form);
-            freshOperators.cellFieldPerElement = HierarchicalMatrix(cellPoints, elementPoints, recorded_field_per_element_entry, splitOperatorTolerance, form);
-            freshOperators.cellFieldPerReaction = HierarchicalMatrix(cellPoints, cellPoints, [&](size_t cell, size_t other) { return recorded_face_field(cell, other, false); },
-                                                                     splitOperatorTolerance, form);
-            freshOperators.ownFaceFieldPerCell.assign(numberCells, {});
-            for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
-                for (size_t cell : cellsPerTurn[turnIndex]) {
-                    for (size_t other : cellsPerTurn[turnIndex]) {
-                        freshOperators.ownFaceFieldPerCell[cell].emplace_back(other, recorded_face_field(cell, other, true));
-                    }
+            freshOperators.sheetCells.clear();
+            for (size_t cell = 0; cell < numberCells; ++cell) {
+                if (cellHasSheets[cell]) {
+                    freshOperators.sheetCells.push_back(cell);
                 }
             }
+            const auto& sheetCells = freshOperators.sheetCells;
+            std::vector<std::array<double, 2>> sheetCellPoints;
+            for (size_t cell : sheetCells) {
+                sheetCellPoints.push_back(cellPoints[cell]);
+            }
+            freshOperators.elementReactionPotential = HierarchicalMatrix(
+                elementPoints, sheetCellPoints, [&](size_t target, size_t sheet) { return recorded_reaction_potential_entry(target, sheetCells[sheet]); },
+                splitOperatorTolerance, form);
+            freshOperators.cellFieldPerElement = HierarchicalMatrix(
+                sheetCellPoints, elementPoints, [&](size_t sheet, size_t source) { return recorded_field_per_element_entry(sheetCells[sheet], source); },
+                splitOperatorTolerance, form);
+            freshOperators.cellFieldPerReaction = HierarchicalMatrix(
+                sheetCellPoints, sheetCellPoints, [&](size_t sheet, size_t other) { return recorded_face_field(sheetCells[sheet], sheetCells[other]); },
+                splitOperatorTolerance, form);
             freshOperators.potentialPerGroup.assign(numberGroups, {});
             freshOperators.reactionPotentialPerGroup.assign(numberGroups, {});
             freshOperators.fieldPerElementPerGroup.assign(numberGroups, {});
@@ -7627,19 +7868,19 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                     for (size_t cell : cells) {
                         const size_t index = reactionPotential.size();
                         reactionPotential.push_back(reactionPotentialRecords[group].known[index] ? reactionPotentialRecords[group].values[index]
-                                                                                                   : reaction_potential_entry(target, cell));
+                                                                                                   : (cellHasSheets[cell] ? reaction_potential_entry(target, cell) : 0.0));
                     }
                 }
                 for (size_t cell : cells) {
                     for (size_t source : groupElements) {
                         const size_t index = fieldPerElement.size();
                         fieldPerElement.push_back(fieldPerElementRecords[group].known[index] ? fieldPerElementRecords[group].values[index]
-                                                                                             : field_per_element_entry(cell, source));
+                                                                                             : (cellHasSheets[cell] ? field_per_element_entry(cell, source) : 0.0));
                     }
                     for (size_t other : cells) {
                         // The face sheets of `other`, its own turn's included.
                         const size_t index = fieldPerReaction.size();
-                        fieldPerReaction.push_back(faceFieldRecords[group].known[index] ? faceFieldRecords[group].values[index] : face_field(cell, other, false));
+                        fieldPerReaction.push_back(faceFieldRecords[group].known[index] ? faceFieldRecords[group].values[index] : (cellHasSheets[cell] && cellHasSheets[other] ? face_field(cell, other) : 0.0));
                     }
                 }
             }
@@ -7922,7 +8163,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             for (size_t cell = 0; cell < numberCells; ++cell) {
                 const auto& flat = split.flatTurns[flatTurnPerCell[cell]];
                 const double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wires[windingPerTurn[flat.turnIndex]], frequency, temperature);
-                const std::complex<double> slab = std::complex<double>(1, 1) * flat.thickness / (2 * skinDepth);
+                const std::complex<double> slab = std::complex<double>(1, 1) * flat.cellHeights.at(cellIndexPerGlobalCell[cell]) / (2 * skinDepth);  // a rounded end's cell is thinner
                 // A slab whose faces carry H_s screens its inside to H_s tanh(s) / s on average: the face sheets, D / w = H_s - H
                 // apart, hold D / w = (s coth s - 1) H with H the field inside, which counts the conductor's own sheets. The
                 // relation held before, D = (1 - tanh(s) / s) w H with H from everything but its own sheets, is the same only
@@ -7931,7 +8172,8 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                 // 0.64x 2-D OMFEM, the field between their bars 0.56-0.77x; 0.79x and 0.92-0.97x with this relation).
                 const std::complex<double> reaction = slab / std::tanh(slab) - 1.0;
                 // The face sheets screen (see flat_face_sign).
-                reactionPerField[cell] = -reaction * cellWidth[cell];
+                // An end piece has none: its current and its neighbours' resolve the thickness themselves (FlatTurnCells::cellScreened).
+                reactionPerField[cell] = flat.cellScreened.at(cellIndexPerGlobalCell[cell]) ? -reaction * cellWidth[cell] : 0.0;
             }
             return reactionPerField;
         };
@@ -8039,12 +8281,20 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                             add(row, groupElements[j], value);
                         }
                         for (size_t k = 0; k < cells.size(); ++k) {
+                            if (reactionPerField[cells[k]] == 0.0) {
+                                continue;  // an end piece: no face sheets
+                            }
                             add(row, offsetField + cells[k], jOmega * reactionPotential[i * cells.size() + k] * reactionPerField[cells[k]]);
                         }
                         add(row, offsetTurn + elements[row].turnIndex, Complex(-1.0));
                     }
                     for (size_t k = 0; k < cells.size(); ++k) {
                         const size_t row = offsetField + cells[k];
+                        if (reactionPerField[cells[k]] == 0.0) {
+                            // An end piece's field feeds no equation (it has no face sheets): only its own diagonal.
+                            add(row, row, Complex(1.0));
+                            continue;
+                        }
                         for (size_t j = 0; j < groupSize; ++j) {
                             double wallField = wallFieldPerCell[cells[k]];
                             if (multiWindowFrame && wallGroupPerElement[groupElements[j]]) {
@@ -8054,6 +8304,9 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                             add(row, groupElements[j], Complex(-(fieldPerElement[k * groupSize + j] + wallField)));
                         }
                         for (size_t l = 0; l < cells.size(); ++l) {
+                            if (k != l && reactionPerField[cells[l]] == 0.0) {
+                                continue;
+                            }
                             Complex value = -fieldPerReaction[k * cells.size() + l] * reactionPerField[cells[l]];
                             if (k == l) {
                                 value += 1.0;
@@ -8159,9 +8412,27 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                     fieldsBatch.push_back(&system.fields);
                 }
                 operators->elementPotential.multiply_add_batch(currentsBatch, potentialsBatch);
-                operators->elementReactionPotential.multiply_add_batch(reactionsBatch, potentialsBatch);
-                operators->cellFieldPerElement.multiply_add_batch(currentsBatch, fieldsBatch);
-                operators->cellFieldPerReaction.multiply_add_batch(reactionsBatch, fieldsBatch);
+                // The cell operators run over the cells with face sheets (SplitOperators::sheetCells): gather, apply, scatter.
+                const auto& sheetCells = operators->sheetCells;
+                std::vector<std::vector<Complex>> sheetReactions(members.size(), std::vector<Complex>(sheetCells.size()));
+                std::vector<std::vector<Complex>> sheetFields(members.size(), std::vector<Complex>(sheetCells.size(), Complex(0)));
+                std::vector<const std::vector<Complex>*> sheetReactionsBatch;
+                std::vector<std::vector<Complex>*> sheetFieldsBatch;
+                for (size_t index = 0; index < members.size(); ++index) {
+                    for (size_t sheet = 0; sheet < sheetCells.size(); ++sheet) {
+                        sheetReactions[index][sheet] = (*reactionsBatch[index])[sheetCells[sheet]];
+                    }
+                    sheetReactionsBatch.push_back(&sheetReactions[index]);
+                    sheetFieldsBatch.push_back(&sheetFields[index]);
+                }
+                operators->elementReactionPotential.multiply_add_batch(sheetReactionsBatch, potentialsBatch);
+                operators->cellFieldPerElement.multiply_add_batch(currentsBatch, sheetFieldsBatch);
+                operators->cellFieldPerReaction.multiply_add_batch(sheetReactionsBatch, sheetFieldsBatch);
+                for (size_t index = 0; index < members.size(); ++index) {
+                    for (size_t sheet = 0; sheet < sheetCells.size(); ++sheet) {
+                        (*fieldsBatch[index])[sheetCells[sheet]] += sheetFields[index][sheet];
+                    }
+                }
                 for (size_t index = 0; index < members.size(); ++index) {
                     const auto& system = systems[members[index]];
                     const auto& x = *inputs[index];
@@ -8336,12 +8607,9 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                     }
                     const size_t cell = elements[element].globalCell.value();
                     const size_t flatIndex = flatTurnPerCell[cell];
-                    // The field it reports is the one from outside its own slab, as the loss kernel reads it: its own turn's
-                    // sheets taken back out of the solved field.
-                    std::complex<double> field = solution[offsetField + cell];
-                    for (const auto& [other, ownFaceField] : operators->ownFaceFieldPerCell[cell]) {
-                        field -= ownFaceField * reactionPerField[other] * solution[offsetField + other];
-                    }
+                    // The field it reports is the solved one, from every source its own sheets included, as the field step
+                    // reads it at a cell sample (ABT #2528: the slab is fed the total field along its faces).
+                    const std::complex<double> field = solution[offsetField + cell];
                     if (std::isnan(solution[element].real()) || std::isnan(solution[element].imag()) || std::isnan(field.real()) || std::isnan(field.imag())) {
                         throw NaNResultException("Width cells: NaN cell current or field at " + std::to_string(frequency) + " Hz");
                     }

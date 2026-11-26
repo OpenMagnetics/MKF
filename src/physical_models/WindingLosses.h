@@ -72,7 +72,9 @@ class WindingLosses
         // Field step, then the per-turn kernels at `temperature`.
         WindingLossesOutput calculate_losses(Magnetic magnetic, OperatingPoint operatingPoint, double temperature);
         // `temperature`: the conductors' temperature the parallel current split is solved at.
-        WindingLossesField calculate_magnetic_field(Magnetic magnetic, OperatingPoint operatingPoint, double temperature);
+        // inducedField: the points to compute the field at instead of the turns' own (a test reads the field step at chosen
+        // points this way; the loss step needs the default).
+        WindingLossesField calculate_magnetic_field(Magnetic magnetic, OperatingPoint operatingPoint, double temperature, const std::optional<Field>& inducedField = std::nullopt);
         // The per-turn kernels (ohmic, skin effect, proximity from the field step's H) at
         // `temperature`. `field` must come from calculate_magnetic_field of this magnetic; its H
         // and its parallel current split are used as they are, whatever temperature they were

@@ -1994,7 +1994,9 @@ namespace {
                 CHECK(std::fabs(lossesFieldAtSolved - lossesFieldAtAmbient) > 1e-7 * lossesFieldAtAmbient);
                 // 1e-2 (Alf, 2026-11-06): the flat wire's width cells react through the slab, which follows the skin depth
                 // at the iterate, so the ambient field is 0.23 % off the solved one; it was under 1e-4 before the cells.
-                CHECK(std::fabs(lossesFieldAtSolved - lossesFieldAtAmbient) < 1e-2 * lossesFieldAtAmbient);
+                // 3e-2 (Alf 2026-11-25, ABT #2528): the end pieces carry the split's resistive share, so the ambient field
+                // is 2.1 % off the solved one (3.613 vs 3.537 W; 0.6 % before them).
+                CHECK(std::fabs(lossesFieldAtSolved - lossesFieldAtAmbient) < 3e-2 * lossesFieldAtAmbient);
             }
         }
     }

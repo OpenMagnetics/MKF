@@ -1757,52 +1757,61 @@ double WindingProximityEffectLossesMartinezModel::calculate_flat_cell_losses(dou
                                     " points where the in-phase field has " + std::to_string(data.size()));
     }
 
-    // The field along the faces at each cell centre, in cell order.
-    std::vector<double> parallelFieldSquared;
-    parallelFieldSquared.reserve(numberCells);
+    // The field along the faces at each full-thickness cell: the mean of its two face samples (see the field step), in
+    // cell order; an end piece has none (it is booked from its own current).
+    std::vector<double> parallelFieldSquared(numberCells, 0.0);
+    std::vector<size_t> samplePoints;
     for (size_t pointIndex = 0; pointIndex < data.size(); ++pointIndex) {
-        const auto& point = data[pointIndex];
-        if (!point.get_label() || point.get_label().value() != "cellsample") {
+        if (data[pointIndex].get_label() && data[pointIndex].get_label().value() == "cellsample") {
+            samplePoints.push_back(pointIndex);
+        }
+    }
+    if (flat.cellScreened.size() != numberCells) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Width cells: " + std::to_string(flat.cellScreened.size()) + " screening flags for " +
+                                    std::to_string(numberCells) + " cells");
+    }
+    const size_t screenedCells = static_cast<size_t>(std::count(flat.cellScreened.begin(), flat.cellScreened.end(), true));
+    if (samplePoints.size() != 2 * screenedCells) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Width cells: " + std::to_string(samplePoints.size()) + " cell samples for " +
+                                    std::to_string(screenedCells) + " full-thickness cells (two each)");
+    }
+    size_t nextSample = 0;
+    for (size_t cellIndex = 0; cellIndex < numberCells; ++cellIndex) {
+        if (!flat.cellScreened[cellIndex]) {
             continue;
         }
-        const size_t cellIndex = parallelFieldSquared.size();
-        if (cellIndex >= numberCells) {
-            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Width cells: more cell samples than the turn's " + std::to_string(numberCells) + " cells");
+        double inPhase = 0;
+        double quadrature = 0;
+        for (size_t side = 0; side < 2; ++side, ++nextSample) {
+            const size_t pointIndex = samplePoints[nextSample];
+            const auto& point = data[pointIndex];
+            const double along = flat.along(point.get_point()[0], point.get_point()[1]);
+            if (std::abs(along - flat.cellCentres[cellIndex]) > 1e-9 * flat.width) {
+                throw InvalidInputException(ErrorCode::INVALID_INPUT, "Width cells: cell sample " + std::to_string(nextSample) + " is not at its cell");
+            }
+            // get_real() is Hx, get_imaginary() is Hy.
+            inPhase += (flat.wideAlongX ? point.get_real() : point.get_imaginary()) / 2;
+            if (quadratureData) {
+                const auto& quadraturePoint = (*quadratureData)[pointIndex];
+                quadrature += (flat.wideAlongX ? quadraturePoint.get_real() : quadraturePoint.get_imaginary()) / 2;
+            }
         }
-        const double along = flat.along(point.get_point()[0], point.get_point()[1]);
-        if (std::abs(along - flat.cellCentres[cellIndex]) > 1e-9 * flat.width) {
-            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Width cells: cell sample " + std::to_string(cellIndex) + " is not at its cell's centre");
-        }
-        // get_real() is Hx, get_imaginary() is Hy.
-        double fieldSquared = std::pow(flat.wideAlongX ? point.get_real() : point.get_imaginary(), 2);
-        if (quadratureData) {
-            const auto& quadraturePoint = (*quadratureData)[pointIndex];
-            fieldSquared += std::pow(flat.wideAlongX ? quadraturePoint.get_real() : quadraturePoint.get_imaginary(), 2);
-        }
-        parallelFieldSquared.push_back(fieldSquared);
-    }
-    if (parallelFieldSquared.size() != numberCells) {
-        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Width cells: " + std::to_string(parallelFieldSquared.size()) + " cell samples for " +
-                                    std::to_string(numberCells) + " cells");
+        parallelFieldSquared[cellIndex] = inPhase * inPhase + quadrature * quadrature;
     }
 
     const double skinDepth = std::sqrt(resistivity / (std::numbers::pi * frequency * Constants().vacuumPermeability));
-    const double nu = flat.thickness / skinDepth;
-    double functionF;
-    double functionG;
-    if (nu > 300) {
-        // cosh 2nu overflows beyond nu ~ 355; the ratios are 1 and 0 to double precision long before.
-        functionF = 1;
-        functionG = 0;
-    }
-    else {
+    // The slab functions of a thickness (a cell of a rounded end is thinner than the conductor).
+    const auto slab_functions = [skinDepth](double thickness) {
+        const double nu = thickness / skinDepth;
+        if (nu > 300) {
+            // cosh 2nu overflows beyond nu ~ 355; the ratios are 1 and 0 to double precision long before.
+            return std::pair<double, double>{1.0, 0.0};
+        }
         const double denominator = std::cosh(2 * nu) - std::cos(2 * nu);
-        functionF = (std::sinh(2 * nu) + std::sin(2 * nu)) / denominator;
-        functionG = (std::sinh(nu) * std::cos(nu) + std::cosh(nu) * std::sin(nu)) / denominator;
-    }
+        return std::pair<double, double>{(std::sinh(2 * nu) + std::sin(2 * nu)) / denominator, (std::sinh(nu) * std::cos(nu) + std::cosh(nu) * std::sin(nu)) / denominator};
+    };
+    const auto [functionF, functionG] = slab_functions(flat.thickness);
     const double surfaceResistanceOverTwo = resistivity / skinDepth / 2;  // 1 / (2 sigma delta)
-    const double endTerm = calculate_flat_cell_end_term(nu);
-
     // Per metre of the turn (the caller multiplies by its length): each cell over its own length, as a share of the turn's
     // (FlatTurnCells::cellLengthRatios), and the uniform sheet the skin step books over the conductor's own length
     // (conductorLengthRatio). That sheet is the least the cells can carry: sum_e w_e (L_e / L_t) |K_e|^2 is least for the
@@ -1812,58 +1821,38 @@ double WindingProximityEffectLossesMartinezModel::calculate_flat_cell_losses(dou
         throw InvalidInputException(ErrorCode::INVALID_INPUT, "Width cells: " + std::to_string(flat.cellLengthRatios.size()) + " cell lengths for " +
                                     std::to_string(numberCells) + " cells, conductor length ratio " + std::to_string(flat.conductorLengthRatio));
     }
+    if (flat.cellHeights.size() != numberCells || flat.cellScreened.size() != numberCells) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Width cells: " + std::to_string(flat.cellHeights.size()) + " cell heights and " +
+                                    std::to_string(flat.cellScreened.size()) + " screening flags for " + std::to_string(numberCells) + " cells");
+    }
     double losses = 0;
     std::complex<double> turnCurrent = 0;
-    // The face-field jump the cells' currents make at each cell (see the comment above the function): K smoothed by the
-    // Poisson kernel of half-width t / 2 over this conductor, averaged over the cell, its weights normalised to 1.
-    std::vector<std::complex<double>> smoothedSheet(numberCells);
-    {
-        const double h = flat.thickness / 2;
-        auto phi = [h](double u) { return u * std::atan(u / h) - h / 2 * std::log(u * u + h * h); };
-        for (size_t c = 0; c < numberCells; ++c) {
-            const double ac = flat.cellCentres[c] - flat.cellWidths[c] / 2;
-            const double bc = flat.cellCentres[c] + flat.cellWidths[c] / 2;
-            double weightSum = 0;
-            std::complex<double> sum = 0;
-            for (size_t e = 0; e < numberCells; ++e) {
-                const double ae = flat.cellCentres[e] - flat.cellWidths[e] / 2;
-                const double be = flat.cellCentres[e] + flat.cellWidths[e] / 2;
-                const double weight = (phi(bc - ae) - phi(ac - ae) - phi(bc - be) + phi(ac - be)) / std::numbers::pi;
-                weightSum += weight;
-                sum += weight * (cellCurrents[e] / flat.cellWidths[e]);
-            }
-            smoothedSheet[c] = sum / weightSum;
-        }
-        // Ampere: the face-field jumps across the width add up to the conductor's net current. Normalising each cell's
-        // weights keeps a uniform current exact but drops the kernel's tails past the conductor's ends, so the sheet
-        // integrated a few percent short of the current where the current crowds to the ends (an ER 25 planar trace at
-        // 6 MHz, nu = 10.6: 1.739 A of 1.774 A), and the loss below then fell under the uniform sheet the skin step books,
-        // to a negative proximity loss. A constant shift restores the net current; it is zero for a uniform current.
-        std::complex<double> sheetCurrent = 0;
-        for (size_t c = 0; c < numberCells; ++c) {
-            sheetCurrent += flat.cellWidths[c] * smoothedSheet[c];
-            turnCurrent += cellCurrents[c];
-        }
-        const std::complex<double> shift = (turnCurrent - sheetCurrent) / flat.width;
-        for (auto& sheet : smoothedSheet) {
-            sheet += shift;
-        }
-    }
     for (size_t cellIndex = 0; cellIndex < numberCells; ++cellIndex) {
         const double cellWidth = flat.cellWidths[cellIndex];
-        const double sheetCurrentSquared = std::norm(cellCurrents[cellIndex] / cellWidth);
-        const double currentTerm = std::norm(smoothedSheet[cellIndex]) * (functionF / 2 + functionG) +
-                                   (sheetCurrentSquared - std::norm(smoothedSheet[cellIndex])) / nu;
-        losses += flat.cellLengthRatios[cellIndex] * cellWidth *
-                  (2 * parallelFieldSquared[cellIndex] * (functionF - 2 * functionG) + currentTerm);
+        turnCurrent += cellCurrents[cellIndex];
+        if (flat.cellScreened[cellIndex]) {
+            // A full-thickness cell: the slab with H along its faces and its own sheet current K.
+            const double sheetCurrentSquared = std::norm(cellCurrents[cellIndex] / cellWidth);
+            const auto [cellF, cellG] = slab_functions(flat.cellHeights[cellIndex]);
+            losses += flat.cellLengthRatios[cellIndex] * cellWidth * (2 * parallelFieldSquared[cellIndex] * (cellF - 2 * cellG) + sheetCurrentSquared * (cellF / 2 + cellG));
+        }
+        else {
+            // An end piece, no wider and (at the faces) no taller than half a skin depth: its current flows uniformly
+            // through it, |I|^2 / (2 sigma w h), here over the common factor 1 / (2 sigma delta).
+            losses += flat.cellLengthRatios[cellIndex] * std::norm(cellCurrents[cellIndex]) * skinDepth / (cellWidth * flat.cellHeights[cellIndex]);
+        }
     }
-    losses += endTerm * flat.thickness * 2 * (flat.cellLengthRatios.front() * parallelFieldSquared.front() + flat.cellLengthRatios.back() * parallelFieldSquared.back());
+    if (!(losses >= 0) || !std::isfinite(losses)) {
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Width cells: the cells book a loss of " + std::to_string(losses * surfaceResistanceOverTwo) + " W/m");
+    }
+    // The skin step books the turn's current spread uniformly over its two wide faces (a 1-D sheet, FERREIRA), so that is
+    // taken off: what remains is the proximity loss. It can be negative (Alf 2026-11-24): where the field is weak, as on
+    // the outer bars of a stack, the current also runs down the end faces, over a perimeter of 2 (W + t) instead of 2 W, and
+    // the turn's whole loss falls below the 1-D sheet (2-D OMFEM, ETD 49 stack, outer bar at 500 kHz: R_ac/R_dc 5.12 against
+    // the sheet's 5.37). The total stays the turn's loss; the sheet over-states its skin share, and this term corrects it.
     const double uniformSheet = flat.conductorLengthRatio * flat.width * std::norm(turnCurrent / flat.width);
     losses -= uniformSheet * (functionF / 2 + functionG);
     losses *= surfaceResistanceOverTwo;
-    if (!(losses >= -1e-9 * std::abs(surfaceResistanceOverTwo * uniformSheet))) {
-        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Width cells: negative proximity loss " + std::to_string(losses) + " W/m");
-    }
     return losses;
 }
 

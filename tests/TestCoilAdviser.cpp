@@ -900,28 +900,41 @@ TEST_CASE("Test_CoilAdviser_Planar", "[adviser][coil-adviser][planar]") {
 
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 100);
-    // Rewritten (ABT #1394, approved by Alf 2026-11-01). The fixture is unchanged: every coil the adviser winds is above the
-    // temperature limit, so it returns none and says why.
-    REQUIRE(masMagneticsWithCoil.empty());
-    auto noResultsReason = coilAdviser.get_last_no_results_reason();
-    REQUIRE(noResultsReason.has_value());
-    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("rejected by the temperature limit"));
-    // Re-pinned 2026-11-04 (ABT #2226, approved by Alf): the example is the first rejected coil in loss order now (the
-    // adviser orders its coils by losses, the score only breaking ties); it was "hot spot reaches 272 C with 23.4 W of losses".
-    // Re-pinned 2026-11-06 (approved by Alf): the screened width-cell model books the flat turns' losses, which moves the
-    // loss order; it was "hot spot reaches 136 C with 9.17 W of losses". Re-pinned again the same day (approved by Alf) from
-    // 9.29 W to 9.28 W, same candidate: the cell solve's tolerance 1e-10 -> 1e-4 and cell growth x1.4 -> x2 (speed, 0.1 %).
-    // Re-pinned 2026-11-12 (approved by Alf): the planar redo sizes the tracks from the winding's layers, offers every
-    // etchable width and winds each, so the first rejected coil is another; it was "hot spot reaches 156 C with 9.28 W".
-    // Re-pinned 2026-11-20 (approved by Alf): the width cells resolve half a skin depth at the conductor ends and book only
-    // the face-wrapping part of a cell's current as face-crowded (ABT #2384), about 1 % less loss on the same candidate;
-    // it was "hot spot reaches 231 C with 17.4 W of losses".
-    // Re-pinned 2026-11-22 (approved by Alf): every flat turn is resolved into width cells (FlatTurnCells::
-    // minimumAspectRatio 4 -> 1), so the 0.38 x 0.14 mm primary trace is too; the first rejected coil is now the 112-turn
-    // stack-up 0-0-1-1-1-1-0-0-1-1-1-1, about 3 % more loss; it was "hot spot reaches 230 C with 17.2 W of losses".
-    // Open: 2-D OMFEM reads this coil's R_ac/R_dc far lower (primary 1.05 vs MKF 1.65, secondary 1.69 vs 21.3, hot spot
-    // 53 C), possibly without the flyback's secondary current imposed (ABT #2472).
-    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("hot spot reaches 234 C with 17.7 W of losses"));
+    // Rewritten again 2026-11-26 (ABT #2528, approved by Alf; the fixture is unchanged). With end pieces resolving each
+    // conductor end the printed traces lose less, and one coil now passes the temperature limit: the 112-turn stack-up
+    // 0-0-0-0-0-0-0-0-1-1-1-1-1-1-1-1 (7.08 W winding, 0.038 W core). Until then every coil was above the limit and the
+    // test checked the reason ("hot spot reaches 234 C with 17.7 W of losses" for the first rejected coil, ABT #1394).
+    // History of that reason:
+    //   Re-pinned 2026-11-04 (ABT #2226, approved by Alf): the example is the first rejected coil in loss order now (the
+    //   adviser orders its coils by losses, the score only breaking ties); it was "hot spot reaches 272 C with 23.4 W of losses".
+    //   Re-pinned 2026-11-06 (approved by Alf): the screened width-cell model books the flat turns' losses, which moves the
+    //   loss order; it was "hot spot reaches 136 C with 9.17 W of losses". Re-pinned again the same day (approved by Alf) from
+    //   9.29 W to 9.28 W, same candidate: the cell solve's tolerance 1e-10 -> 1e-4 and cell growth x1.4 -> x2 (speed, 0.1 %).
+    //   Re-pinned 2026-11-12 (approved by Alf): the planar redo sizes the tracks from the winding's layers, offers every
+    //   etchable width and winds each, so the first rejected coil is another; it was "hot spot reaches 156 C with 9.28 W".
+    //   Re-pinned 2026-11-20 (approved by Alf): the width cells resolve half a skin depth at the conductor ends and book only
+    //   the face-wrapping part of a cell's current as face-crowded (ABT #2384), about 1 % less loss on the same candidate;
+    //   it was "hot spot reaches 231 C with 17.4 W of losses".
+    //   Re-pinned 2026-11-22 (approved by Alf): every flat turn is resolved into width cells (FlatTurnCells::
+    //   minimumAspectRatio 4 -> 1), so the 0.38 x 0.14 mm primary trace is too; the first rejected coil is now the 112-turn
+    //   stack-up 0-0-1-1-1-1-0-0-1-1-1-1, about 3 % more loss; it was "hot spot reaches 230 C with 17.2 W of losses".
+    //   Open: 2-D OMFEM reads this coil's R_ac/R_dc far lower (primary 1.05 vs MKF 1.65, secondary 1.69 vs 21.3, hot spot
+    //   53 C), possibly without the flyback's secondary current imposed (ABT #2472).
+    REQUIRE(masMagneticsWithCoil.size() == 1);
+    auto& advised = masMagneticsWithCoil.front();
+    CHECK_THAT(advised.get_magnetic().get_reference(), Catch::Matchers::ContainsSubstring("Stack-up: 0-0-0-0-0-0-0-0-1-1-1-1-1-1-1-1"));
+    // Judged by the adviser's own gate: its losses, then its hot spot against the design's temperature limit.
+    MagneticFilterLosses lossesFilter;
+    std::vector<OpenMagnetics::Outputs> lossesOutputs;
+    auto wound = advised.get_magnetic();
+    auto woundInputs = advised.get_inputs();
+    lossesFilter.evaluate_magnetic(&wound, &woundInputs, &lossesOutputs);
+    const double maximumTemperature = resolve_maximum_design_temperature(woundInputs);
+    MagneticFilterTemperature temperatureFilter(woundInputs, maximumTemperature);
+    auto [withinLimit, hotSpot] = temperatureFilter.evaluate_solved_outputs(lossesOutputs);
+    CAPTURE(hotSpot, maximumTemperature);
+    CHECK(withinLimit);
+    CHECK_THAT(hotSpot, Catch::Matchers::WithinAbs(125.8, 1.0));
     settings.reset();
 }
 

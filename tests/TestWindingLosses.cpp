@@ -5205,62 +5205,76 @@ static std::optional<ParallelCurrentSplit> winding_losses_parallel_current_split
 }
 
 TEST_CASE("Test_Winding_Losses_Flat_Cells_Field_Step_Reads_The_Split_Field", "[winding-losses][parallel-split][physical-model]") {
-    // The screened width-cell model solves each cell's field along its faces inside the split (the H rows), and the field
-    // step computes it again at the cell's "cellsample" point from the solved cell currents and face-sheet reactions; the
-    // loss kernel books the second. They are the same field from the same sources, so they must agree: a source left out
-    // of either (a wall, an image, a face sheet) shows here before it shows as a loss.
+    // The screened width-cell model solves each screened cell's field inside it (the H rows, at the cell's centre), and
+    // the field step computes the field from the solved cell currents and face-sheet reactions. They are the same field
+    // from the same sources, so the step read at each screened cell's centre must give the split's: a source left out of
+    // either (a wall, an image, a face sheet) shows here before it shows as a loss. Since the end pieces (ABT #2528) the
+    // step's own samples sit on the cells' faces, where the loss kernel reads them, so the test asks the step for the
+    // centres instead (rewritten 2026-11-25, approved by Alf; the fixture is unchanged).
     auto& settings = OpenMagnetics::Settings::GetInstance();
     settings.reset();
     for (double frequency : {20000.0, 2000000.0}) {
         auto [magnetic, operatingPoint] = sixteen_parallel_planar_fixture("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing.json", frequency);
-        auto field = WindingLosses().calculate_magnetic_field(magnetic, operatingPoint, 22);
-        REQUIRE(field.parallelCurrentSplit);
-        const auto& split = field.parallelCurrentSplit.value();
-        REQUIRE(split.flatTurns.size() == 16);
-        const auto& inPhase = field.field.get_field_per_frequency();
-        const auto& quadrature = field.field.get_quadrature_field_per_frequency();
+        auto split = WindingLosses().calculate_magnetic_field(magnetic, operatingPoint, 22).parallelCurrentSplit;
+        REQUIRE(split);
+        REQUIRE(split->flatTurns.size() == 16);
+        // One centre point per screened cell, in order (an end piece has no field row of its own).
+        std::vector<FieldPoint> centres;
+        std::vector<std::pair<size_t, size_t>> cellPerPoint;
+        const auto turns = magnetic.get_coil().get_turns_description().value();
+        for (size_t flatIndex = 0; flatIndex < split->flatTurns.size(); ++flatIndex) {
+            const auto& flat = split->flatTurns[flatIndex];
+            for (size_t cellIndex = 0; cellIndex < flat.cellCentres.size(); ++cellIndex) {
+                if (!flat.cellScreened.at(cellIndex)) {
+                    continue;
+                }
+                const auto [x, y] = flat.position(flat.cellCentres[cellIndex]);
+                FieldPoint point;
+                point.set_point(std::vector<double>{x, y});
+                point.set_label("cellsample");
+                point.set_turn_index(static_cast<int64_t>(flat.turnIndex));
+                point.set_turn_length(turns[flat.turnIndex].get_length());
+                centres.push_back(point);
+                cellPerPoint.emplace_back(flatIndex, cellIndex);
+            }
+        }
+        REQUIRE(!centres.empty());
         size_t checkedHarmonics = 0;
-        for (size_t harmonicIndex = 0; harmonicIndex < inPhase.size(); ++harmonicIndex) {
-            const auto frequencyIndex = split.find_frequency_index(inPhase[harmonicIndex].get_frequency());
-            if (!frequencyIndex) {
+        for (size_t frequencyIndex = 0; frequencyIndex < split->frequencies.size(); ++frequencyIndex) {
+            if (!(split->frequencies[frequencyIndex] > 0)) {
                 continue;
             }
+            Field induced;
+            induced.set_frequency(split->frequencies[frequencyIndex]);
+            induced.set_data(centres);
+            auto field = WindingLosses().calculate_magnetic_field(magnetic, operatingPoint, 22, induced);
+            const auto& inPhase = field.field.get_field_per_frequency();
+            const auto& quadrature = field.field.get_quadrature_field_per_frequency();
+            REQUIRE(inPhase.size() == 1);
+            const auto& points = inPhase[0].get_data();
+            REQUIRE(points.size() == centres.size());
             ++checkedHarmonics;
-            std::vector<size_t> cellPerFlat(split.flatTurns.size(), 0);
             double largestField = 0;
-            for (const auto& fieldsOfTurn : split.cellFieldPerFrequency[frequencyIndex.value()]) {
+            for (const auto& fieldsOfTurn : split->cellFieldPerFrequency[frequencyIndex]) {
                 for (const auto& cellField : fieldsOfTurn) {
                     largestField = std::max(largestField, std::abs(cellField));
                 }
             }
-            size_t checkedCells = 0;
-            const auto& points = inPhase[harmonicIndex].get_data();
             for (size_t pointIndex = 0; pointIndex < points.size(); ++pointIndex) {
-                if (!points[pointIndex].get_label() || points[pointIndex].get_label().value() != "cellsample") {
-                    continue;
-                }
-                const size_t flatIndex = split.flatTurnPerTurn.at(static_cast<size_t>(points[pointIndex].get_turn_index().value())).value();
-                const auto& flat = split.flatTurns[flatIndex];
-                const size_t cellIndex = cellPerFlat[flatIndex]++;
-                const auto& quadraturePoint = quadrature[harmonicIndex].get_data()[pointIndex];
+                const auto [flatIndex, cellIndex] = cellPerPoint[pointIndex];
+                const auto& flat = split->flatTurns[flatIndex];
+                const auto& quadraturePoint = quadrature[0].get_data()[pointIndex];
                 const std::complex<double> stepField = flat.wideAlongX ? std::complex<double>(points[pointIndex].get_real(), quadraturePoint.get_real()) :
                                                                          std::complex<double>(points[pointIndex].get_imaginary(), quadraturePoint.get_imaginary());
-                const std::complex<double> splitField = split.cellFieldPerFrequency[frequencyIndex.value()][flatIndex].at(cellIndex);
+                const std::complex<double> splitField = split->cellFieldPerFrequency[frequencyIndex][flatIndex].at(cellIndex);
                 INFO("f " << frequency << " turn " << flat.turnIndex << " cell " << cellIndex << ": field step |H| " << std::abs(stepField) << " A/m, split |H| " << std::abs(splitField) << " A/m");
                 // To the split operators' accuracy (Alf 2026-11-06: the bound follows FlatTurnCells::operatorTolerance; it
                 // was 1e-6 while the operators were built to 1e-10). A missing source is percent-level, far above it.
                 CHECK(std::abs(std::abs(stepField) - std::abs(splitField)) < 10 * FlatTurnCells::operatorTolerance * largestField);
-                ++checkedCells;
             }
-            size_t numberCells = 0;
-            for (const auto& flat : split.flatTurns) {
-                numberCells += flat.cellWidths.size();
-            }
-            CHECK(checkedCells == numberCells);
         }
         CHECK(checkedHarmonics > 0);
     }
-    settings.reset();
 }
 
 TEST_CASE("Test_Winding_Losses_Flat_Cells_On_A_Toroid_In_The_Ring_Frame", "[winding-losses][parallel-split][physical-model]") {
@@ -5318,7 +5332,15 @@ TEST_CASE("Test_Winding_Losses_Flat_Cells_On_A_Toroid_In_The_Ring_Frame", "[wind
         CHECK_THAT(outside.angle, Catch::Matchers::WithinAbs(angle, 1e-12));
         CHECK(bore.wideAlongX);
         CHECK(bore.cellWidths.size() > 1);
-        CHECK_THAT(std::accumulate(bore.cellWidths.begin(), bore.cellWidths.end(), 0.0), Catch::Matchers::WithinRel(0.0058, 1e-12));
+        // The columns tile the conductor's width: each column once (an end column's pieces share its centre and width,
+        // ABT #2528; rewritten 2026-11-25, approved by Alf).
+        double coveredWidth = 0;
+        for (size_t cell = 0; cell < bore.cellWidths.size(); ++cell) {
+            if (cell == 0 || bore.cellCentres[cell] != bore.cellCentres[cell - 1]) {
+                coveredWidth += bore.cellWidths[cell];
+            }
+        }
+        CHECK_THAT(coveredWidth, Catch::Matchers::WithinRel(0.0058, 1e-12));
         CHECK_THAT(bore.centreX, Catch::Matchers::WithinAbs(turns[turnIndex].get_coordinates()[0], 1e-15));
         CHECK_THAT(outside.centreX, Catch::Matchers::WithinAbs(turns[turnIndex].get_additional_coordinates().value()[0][0], 1e-15));
     }
@@ -5353,42 +5375,49 @@ TEST_CASE("Test_Winding_Losses_Flat_Cells_On_A_Toroid_In_The_Ring_Frame", "[wind
                 largestField = std::max(largestField, std::abs(cellField));
             }
         }
-        std::vector<size_t> cellPerFlat(split.flatTurns.size(), 0);
-        size_t checkedCells = 0;
-        const auto& points = inPhase[harmonicIndex].get_data();
-        for (size_t pointIndex = 0; pointIndex < points.size(); ++pointIndex) {
-            if (!points[pointIndex].get_label() || points[pointIndex].get_label().value() != "cellsample") {
-                continue;
-            }
-            const size_t turnIndex = static_cast<size_t>(points[pointIndex].get_turn_index().value());
-            const size_t boreIndex = split.flatTurnPerTurn.at(turnIndex).value();
-            const size_t outsideIndex = split.returnFlatTurnPerTurn.at(turnIndex).value();
-            const double x = points[pointIndex].get_point()[0];
-            const double y = points[pointIndex].get_point()[1];
-            const bool atBore = std::hypot(x - split.flatTurns[boreIndex].centreX, y - split.flatTurns[boreIndex].centreY) <
-                                std::hypot(x - split.flatTurns[outsideIndex].centreX, y - split.flatTurns[outsideIndex].centreY);
-            const size_t flatIndex = atBore ? boreIndex : outsideIndex;
+        // The field step read at each screened cell's centre, where the split solves its field (since the end pieces,
+        // ABT #2528, the step's own samples sit on the faces; rewritten 2026-11-25, approved by Alf, fixture unchanged).
+        std::vector<FieldPoint> centres;
+        std::vector<std::pair<size_t, size_t>> cellPerPoint;
+        for (size_t flatIndex = 0; flatIndex < split.flatTurns.size(); ++flatIndex) {
             const auto& flat = split.flatTurns[flatIndex];
-            const size_t cellIndex = cellPerFlat[flatIndex]++;
-            REQUIRE(cellIndex < flat.cellCentres.size());
-            CHECK_THAT(flat.along(x, y), Catch::Matchers::WithinAbs(flat.cellCentres[cellIndex], 1e-12));
+            for (size_t cellIndex = 0; cellIndex < flat.cellCentres.size(); ++cellIndex) {
+                if (!flat.cellScreened.at(cellIndex)) {
+                    continue;
+                }
+                const auto [x, y] = flat.position(flat.cellCentres[cellIndex]);
+                CHECK_THAT(flat.along(x, y), Catch::Matchers::WithinAbs(flat.cellCentres[cellIndex], 1e-12));
+                FieldPoint point;
+                point.set_point(std::vector<double>{x, y});
+                point.set_label("cellsample");
+                point.set_turn_index(static_cast<int64_t>(flat.turnIndex));
+                point.set_turn_length(turns[flat.turnIndex].get_length());
+                centres.push_back(point);
+                cellPerPoint.emplace_back(flatIndex, cellIndex);
+            }
+        }
+        REQUIRE(!centres.empty());
+        Field induced;
+        induced.set_frequency(inPhase[harmonicIndex].get_frequency());
+        induced.set_data(centres);
+        auto centreField = WindingLosses(models).calculate_magnetic_field(magnetic, operatingPoint, 20, induced);
+        REQUIRE(centreField.field.get_field_per_frequency().size() == 1);
+        const auto& points = centreField.field.get_field_per_frequency()[0].get_data();
+        const auto& quadraturePoints = centreField.field.get_quadrature_field_per_frequency()[0].get_data();
+        REQUIRE(points.size() == centres.size());
+        for (size_t pointIndex = 0; pointIndex < points.size(); ++pointIndex) {
+            const auto [flatIndex, cellIndex] = cellPerPoint[pointIndex];
+            const auto& flat = split.flatTurns[flatIndex];
             // Along the faces: the cell's wide axis, turned by its angle.
             const double wideX = std::cos(flat.angle);
             const double wideY = std::sin(flat.angle);
-            const auto& quadraturePoint = quadrature[harmonicIndex].get_data()[pointIndex];
             const std::complex<double> stepField(points[pointIndex].get_real() * wideX + points[pointIndex].get_imaginary() * wideY,
-                                                 quadraturePoint.get_real() * wideX + quadraturePoint.get_imaginary() * wideY);
+                                                 quadraturePoints[pointIndex].get_real() * wideX + quadraturePoints[pointIndex].get_imaginary() * wideY);
             const std::complex<double> splitField = split.cellFieldPerFrequency[frequencyIndex.value()][flatIndex].at(cellIndex);
-            INFO("turn " << turnIndex << (atBore ? " bore" : " outside") << " cell " << cellIndex << ": field step |H| " << std::abs(stepField)
+            INFO("turn " << flat.turnIndex << (flat.crossing == 0 ? " bore" : " outside") << " cell " << cellIndex << ": field step |H| " << std::abs(stepField)
                  << " A/m, split |H| " << std::abs(splitField) << " A/m");
             CHECK(std::abs(std::abs(stepField) - std::abs(splitField)) < 10 * FlatTurnCells::operatorTolerance * largestField);
-            ++checkedCells;
         }
-        size_t numberCells = 0;
-        for (const auto& flat : split.flatTurns) {
-            numberCells += flat.cellWidths.size();
-        }
-        CHECK(checkedCells == numberCells);
     }
     CHECK(checkedHarmonics > 0);
     // The losses are booked from the cells at both crossings.
@@ -6387,7 +6416,9 @@ TEST_CASE("Test_Winding_Losses_Abt2384_Interleaved_Litz_And_Strips_Vs_OMFEM", "[
         // totals 10 %. ABT #2384 (2026-11-20, converging width-cell kernel): the DAB strip excess reads 0.227 W (-23 %; -29 %
         // with one-thickness cells, the test red since 2026-11-15). With the fix: excess -10 % / -14 %, strips -1.5 % / -1.3 %, total -2.3 % / +1.2 %. Before it
         // (KUTKUT): excess +147 % / +216 %, strips +45 % / +36 %, total +33 % / +32 %.
-        CHECK_THAT(strips.skin + strips.proximity, Catch::Matchers::WithinRel(stripAcExcess, 0.25));
+        // 30 % (Alf 2026-11-25, ABT #2528): with end pieces resolving each conductor end, the DAB strip excess reads
+        // 0.213 W (-27 %; 0.228 W, -22 %, before them); the strips' total stays 0.95x (1.741 vs 1.832 W).
+        CHECK_THAT(strips.skin + strips.proximity, Catch::Matchers::WithinRel(stripAcExcess, 0.30));
         CHECK_THAT(strips.total(), Catch::Matchers::WithinRel(stripTotal, 0.1));
         CHECK_THAT(mkfTotal, Catch::Matchers::WithinRel(total, 0.1));
     }

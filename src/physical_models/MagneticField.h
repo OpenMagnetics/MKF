@@ -183,6 +183,15 @@ struct FlatTurnCells {
     // Conducting thickness (thin axis) and width (wide axis).
     double thickness = 0;
     double width = 0;
+    // The radius of the conductor's edges (MAS edgeRadius of a rectangular wire; 0 for a sharp-edged conductor). The
+    // end pieces follow the rounded outline: within edgeRadius of an end the conductor is thinner.
+    double edgeRadius = 0;
+    // Per end (start, stop of the wide axis): within gapEndFinePiecesInThicknesses of a gap mouth, so its pieces start at
+    // one edge cell instead of endPieceFirstHeightInEdgeCells.
+    bool startNearGap = false;
+    bool stopNearGap = false;
+    // The conducting area the cells hold (sum of width times height): the cells share the turn's DC resistance by it.
+    double cellArea = 0;
     // The crossing's centre, in the window frame.
     double centreX = 0;
     double centreY = 0;
@@ -190,6 +199,15 @@ struct FlatTurnCells {
     // frame's point turned by -angle) and its width.
     std::vector<double> cellCentres;
     std::vector<double> cellWidths;
+    // Per cell, across the thickness: its centre's offset from the conductor's centre line (along the thin axis, in the
+    // conductor's frame) and its height. A full-thickness cell has offset 0 and height = thickness. The cells near the
+    // conductor's ends no wider than a skin depth are cut into pieces across the thickness (endPieceHeights): there the
+    // current runs down the end face and round its corners, which a full-thickness cell cannot hold (ABT #2528).
+    std::vector<double> cellOffsets;
+    std::vector<double> cellHeights;
+    // Per cell, whether its slab reaction is the face-sheet pair (see calculate_parallel_current_split): true for a
+    // full-thickness cell, false for a piece, whose current and its neighbours' already resolve the thickness.
+    std::vector<bool> cellScreened;
     // Per cell, its own length over the turn's: every loss of the cell (its DC share, its slab and end terms) is booked over
     // its own length, not the turn's (WindingOhmicLosses::calculate_band_length: the cell between the offsets u0 and u1
     // outwards of the turn's centre line, away from its column, is a ring as long as 2 pi (u1 - u0) / ln((L + 2 pi u1) /
@@ -236,6 +254,27 @@ struct FlatTurnCells {
     static constexpr double faceSheetThicknessInThicknesses = 1.0 / 20;
     // The cell cuts of a conductor of this width and thickness: cell widths in order along the wide axis.
     static std::vector<double> calculate_cell_widths(double width, double thickness, double edgeCellWidth);
+    // The pieces an end cell is cut into across the thickness, from one face to the other: from each face edgeCellWidth,
+    // edgeCellWidth, then each cellGrowth times the last, the same grading as the cells along the width; the middle piece
+    // takes the rest (joined to its neighbour when under half of it). Empty when the thickness is not over two edge cells
+    // (one skin depth at the fundamental): a full-thickness cell then holds the current across it.
+    static std::vector<double> calculate_end_piece_heights(double thickness, double edgeCellWidth);
+    // The cells cut into pieces: from each end inwards, every cell no wider than endPieceWidthInEdgeCells edge cells (one
+    // skin depth at the fundamental), up to the first wider one. Wider cells keep the slab's face profile across their width.
+    static constexpr double endPieceWidthInEdgeCells = 4;
+    // The first piece from each face, in edge cells: two (half a skin depth at the fundamental). Against 2-D OMFEM with the
+    // wires' real rounded edges (51 catalogue designs, 2026-11-25) the winding R_ac/R_dc mean error is 6.2 % with this and
+    // the gap rule below, 6.2 % with first pieces of one edge cell and 6.6 % at an eighth of a skin depth. Timed in-process
+    // against the earlier model at the same load: 2.97x its runtime (median) with this, 4.09x with one edge cell.
+    static constexpr double endPieceFirstHeightInEdgeCells = 2;
+    // An end this many thicknesses from a gap mouth keeps first pieces of one edge cell: the fringing field there needs them.
+    static constexpr double gapEndFinePiecesInThicknesses = 2;
+    // Cuts every end cell of `flat` (its columns already set: cellCentres, cellWidths, cellLengthRatios, all with offset 0
+    // and full height) into its pieces, keeping the column order along the width and the pieces in order across it.
+    static void cut_end_cells_into_pieces(FlatTurnCells& flat, double edgeCellWidth);
+    // The conductor's mean half-thickness over [nearEnd, farEnd], distances from its nearest end, with rounded edges of
+    // radius edgeRadius.
+    static double calculate_mean_half_thickness(double thickness, double edgeRadius, double nearEnd, double farEnd);
     // A gap mouth on its column face, in the window frame: the face's x and the gap's extent y0..y1.
     struct GapMouth {
         double x = 0;
