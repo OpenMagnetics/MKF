@@ -465,6 +465,15 @@ struct RoshenDynamicBhLoop {
     double hysteresisDcBiasFactor;              // F = mu_i / mu_rev(B_dc) that widens the static loop (1 unbiased)
 };
 
+// The static MAJOR loop of the Roshen model (the branches get_bh_loop shifts into its minor loops), on its field strength
+// grid from -Hs to Hs in steps of roshenMagneticFieldStrengthStep: the descending (upper) and ascending (lower) branch's
+// B at every H. Drawn behind an operating loop (Painter::paint_bh_loop).
+struct RoshenMajorBhLoop {
+    std::vector<double> magneticFieldStrength;     // [A/m]
+    std::vector<double> upperMagneticFluxDensity;  // [T], the descending branch
+    std::vector<double> lowerMagneticFluxDensity;  // [T], the ascending branch
+};
+
 // The DC operating point of the Roshen-Esguerra bias law (ABT #1737), for the PLOTTING of a biased dynamic loop.
 // Roshen's major loop H = a1 B / (1 - b1 B) -+ Hc is Esguerra's loop (M. Esguerra, "DC-bias specifications of gapped
 // ferrites", Power Electronics Technology, Oct. 2003, Eq. 3) with squareness a = 1, mu_c = 1 / (mu0 a1) and
@@ -544,6 +553,9 @@ class CoreLossesRoshenModel : public CoreLossesModel {
     // RoshenDcBiasPoint). Hc, Br, Bsat, Hsat as get_hysteresis_parameters resolves them; mu_i(T) unbiased from
     // InitialPermeability. Throws when b1 |B_dc| >= 1.
     static RoshenDcBiasPoint get_dc_bias_point(const CoreMaterial& coreMaterial, double temperature, double magneticFluxDensityDcBias);
+    // The material's static major loop at `temperature` (see RoshenMajorBhLoop), from the parameters
+    // get_hysteresis_parameters resolves. Throws when the material lacks them.
+    static RoshenMajorBhLoop get_major_bh_loop(const CoreMaterial& coreMaterial, double temperature);
     double get_hysteresis_losses_density(std::map<std::string, double> parameters, OperatingPointExcitation excitation);
     double get_eddy_current_losses_density(Core core, OperatingPointExcitation excitation, double resistivity);
     double get_excess_eddy_current_losses_density(OperatingPointExcitation excitation,

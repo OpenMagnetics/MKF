@@ -4,6 +4,7 @@
 #include "constructive_models/Magnetic.h"
 #include "physical_models/Temperature.h"
 #include "physical_models/StrayCapacitance.h"
+#include "physical_models/CoreLosses.h"
 #include "support/Utils.h"
 #include <MAS.hpp>
 #include <set>
@@ -34,6 +35,46 @@ enum class CoreFluxDensityView {
     ALTERNATING_AMPLITUDE,
     ANIMATION,
     VOLUMETRIC_LOSSES
+};
+
+// Where a loop of paint_bh_loop comes from:
+//   CORE              - the core's B(t) = flux / Ae (the loop MKF prices, CoreLossesRoshenModel::get_dynamic_bh_loop).
+//   CORNER_CELL       - the most loaded corner cell of the core's flux density map (CoreMagneticFluxDensity).
+enum class BhLoopSource {
+    CORE,
+    CORNER_CELL
+};
+
+// One loop of a B-H plot: the model's loop and its peak point, the sample of largest |B| (its tip: of the samples at
+// that |B|, the one of largest |H|).
+struct BhLoopPlotLoop {
+    BhLoopSource source;
+    RoshenDynamicBhLoop loop;
+    size_t peakIndex;
+    // The map's cell the loop is of; nullopt for the core's B = flux / Ae.
+    std::optional<size_t> cellIndex;
+    // The cell's region (its label), empty for the core.
+    std::string region;
+};
+
+// What paint_bh_loop and paint_bh_loop_animation draw, all of it the models' own numbers.
+struct BhLoopPlot {
+    std::string materialName;
+    std::string shapeName;
+    double frequency;
+    double temperature;
+    // The material's B_sat at the operating temperature (the flux density map's).
+    double saturationFluxDensity;
+    // The material's static Roshen major loop at the operating temperature.
+    RoshenMajorBhLoop majorLoop;
+    // CORE first, then CORNER_CELL when the core has corners (a toroid or a rod has none).
+    std::vector<BhLoopPlotLoop> loops;
+    // The first winding's current over one period (its standardized waveform), for paint_bh_waveform_animation.
+    std::string currentWindingName;
+    std::vector<double> currentTime;
+    std::vector<double> current;
+    // The instants the animation steps through: paint_core_flux_density's ANIMATION frames, so the two play in step.
+    std::vector<double> frameTimes;
 };
 
 // Which plane a whole-magnetic drawing projects (ABT #617, Alf 2026-08-10):
@@ -426,6 +467,9 @@ class Painter : public PainterInterface {
     // Set by paint_wire: the frame is the wire's own canvas (set_image_size(Wire)), so
     // export_svg must not replace it with autoscale's bounding box plus default margins.
     bool _frameFixedByWire = false;
+    // Set by the B-H plots: they draw on a fixed pixel canvas, which export_svg keeps.
+    bool _frameFixedByPlot = false;
+    void paint_bh_loop_graph(const BhLoopPlot& plot, bool animated);
     std::optional<CoreShapeFamily> _coreFamily = std::nullopt;
 
     std::vector<double> get_image_size(Magnetic magnetic);
@@ -548,6 +592,27 @@ class Painter : public PainterInterface {
     // material's B_sat are outlined in the PEAK view.
     void paint_core_flux_density(Magnetic magnetic, OperatingPoint operatingPoint, CoreFluxDensityView view = CoreFluxDensityView::PEAK,
                                  ColorPalette palette = ColorPalette::INFERNO, bool showColorBar = true);
+    // The B-H loops of the core under the operating point, at its ambient temperature: the loop MKF prices
+    // for the core, B(t) = flux / Ae (CoreLossesRoshenModel::get_dynamic_bh_loop: a DC-biased excitation's loop centred at
+    // (B_dc, H_dc) and widened by the DC-bias factor), and the loops of the wound column's and of the corners' most loaded
+    // cells of the flux density map (CoreMagneticFluxDensity::calculate_cell_bh_loop), over the material's static major
+    // loop. Throws whenever a model cannot give a loop (no Roshen data, a waveform with minor loops, a bias at
+    // saturation, a most loaded cell of another material).
+    static BhLoopPlot calculate_bh_loop_plot(Magnetic magnetic, OperatingPoint operatingPoint);
+    // The B-H graph: the loops, their peak point (H_pk, B_pk) with values and, biased, the DC point (H_dc, B_dc), a
+    // horizontal B_sat line at the operating temperature with each loop's margin to it, and in the legend each loop's
+    // volumetric loss f * oint H dB split into hysteresis, eddy current and excess. Replaces the painter's drawing.
+    void paint_bh_loop(Magnetic magnetic, OperatingPoint operatingPoint);
+    void paint_bh_loop(const BhLoopPlot& plot);
+    // The same graph animated over the period: a dot runs round every loop and its trace draws itself, on the frames
+    // and clock of paint_core_flux_density's ANIMATION view, so the two SVGs play in step.
+    void paint_bh_loop_animation(Magnetic magnetic, OperatingPoint operatingPoint);
+    void paint_bh_loop_animation(const BhLoopPlot& plot);
+    // The first winding's current and every loop's B over one period, each with a dot that steps through the same
+    // frames as paint_bh_loop_animation (and paint_core_flux_density's ANIMATION): at every frame the dots mark the
+    // instant the B-H loop's dots are at.
+    void paint_bh_waveform_animation(Magnetic magnetic, OperatingPoint operatingPoint);
+    void paint_bh_waveform_animation(const BhLoopPlot& plot);
     void paint_bobbin(Magnetic magnetic);
     // Magnetic shunts (MAS-RFC 0015): each sheet's rectangle in the 2D section, at its coordinates
     // (x radial, y axial) with its width and height. Only the +x half is drawn, like the rest of the

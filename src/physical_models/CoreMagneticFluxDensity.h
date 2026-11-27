@@ -1,6 +1,7 @@
 #pragma once
 #include "constructive_models/Magnetic.h"
 #include "physical_models/InitialPermeability.h"
+#include "physical_models/CoreLosses.h"
 #include <MAS.hpp>
 #include <array>
 #include <functional>
@@ -15,6 +16,23 @@ using namespace MAS;
 namespace OpenMagnetics {
 
 /**
+ * @brief The part of the core's magnetic path a cell of the flux density map belongs to (its region's role, which
+ * callers select cells by; the region's name is only a label).
+ *   WOUND_COLUMN  - the column the map drives the flux through (an E core's central column, a U core's main leg, a drum's
+ *                   post, a rod, a toroid's ring).
+ *   RETURN_COLUMN - the columns the flux returns through (lateral columns, return legs, a drum-and-plate's flanges, a
+ *                   drum's ring or shell).
+ *   YOKE          - the limbs that join them (yokes, plates, backs, lids, a drum's flanges).
+ *   CORNER        - a bend between two limbs (the Schwarz-Christoffel L channel).
+ */
+enum class CoreFluxDensityRegionRole {
+    WOUND_COLUMN,
+    RETURN_COLUMN,
+    YOKE,
+    CORNER
+};
+
+/**
  * @brief One cell of the core's flux density map: a small piece of the core's cross-section, in the
  * Painter's 2D frame (metres; x across the core, y along the main column for a two-piece set, the ring
  * plane for a toroid).
@@ -22,6 +40,7 @@ namespace OpenMagnetics {
 struct CoreFluxDensityCell {
     std::vector<std::array<double, 2>> polygon;
     std::string region;
+    CoreFluxDensityRegionRole role;
     // The core volume the cell stands for (m3): its area times the core's depth, times the copies of the drawn part
     // the whole core holds (an E core is drawn from the main column's axis out, half of it).
     double volume;
@@ -67,6 +86,9 @@ struct CoreFluxDensityWaveform {
     // The operating point's frequency and core temperature the map was read at.
     double frequency;
     double temperature;
+    // The frequency the map read its materials' magnetisation curves at (InitialPermeability::get_magnetisation_curve;
+    // nullopt: the curves without a frequency).
+    std::optional<double> magnetisationCurveFrequency;
 };
 
 /**
@@ -185,7 +207,7 @@ class CoreMagneticFluxDensity {
     void calibrate_closed_core(Core core);
     bool closed_core_columns_rectangular(Core core);
     void build_toroid(Core core);
-    void add_straight_region(const std::string& name, std::array<double, 2> origin, std::array<double, 2> alongFlux,
+    void add_straight_region(CoreFluxDensityRegionRole role, const std::string& name, std::array<double, 2> origin, std::array<double, 2> alongFlux,
                              double length, std::array<double, 2> acrossFlux, double width, double depth, double fluxShare);
     void add_bend_region(const std::string& name, std::array<double, 2> corner, bool mirrorX, bool mirrorY, double widthA,
                          double widthB, double cutA, double cutB, double depth, double fluxShare, double limbDepth);
@@ -265,6 +287,22 @@ class CoreMagneticFluxDensity {
      */
     static CoreFluxDensityWaveform calculate_waveform(const CoreMagneticFluxDensity& map, const Core& core,
                                                       const Waveform& fluxDensityWaveform, double frequency);
+
+    /**
+     * @brief The flux density excitation of one cell: its signed B(t) over the waveform's period, at the waveform's
+     * frequency, as calculate_core_losses prices it.
+     */
+    static OperatingPointExcitation calculate_cell_excitation(const CoreFluxDensityWaveform& waveform, size_t cellIndex);
+
+    /**
+     * @brief The dynamic Roshen B-H loop of one cell (CoreLossesRoshenModel::get_dynamic_bh_loop, the loop MKF prices
+     * for the core) from the cell's own B(t) (calculate_cell_excitation). A biased cell's loop is centred at its own
+     * B_dc, the centre (max + min) / 2 of its B(t), and at the H_dc the map itself reads there: the field strength on
+     * the cell material's magnetisation curve at B_dc (the curve the map solved the cell on; for the core's B = flux / Ae
+     * the same curve gives the load line's H_dc). Throws for an air cell (no material, no loop) and for a cell of another
+     * material than the core's own (the loop's eddy-current and Roshen terms are the core's).
+     */
+    static RoshenDynamicBhLoop calculate_cell_bh_loop(const Core& core, const CoreFluxDensityWaveform& waveform, size_t cellIndex);
 };
 
 } // namespace OpenMagnetics

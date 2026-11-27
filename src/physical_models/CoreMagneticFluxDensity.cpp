@@ -195,13 +195,14 @@ void CoreMagneticFluxDensity::find_region_twins() {
     }
 }
 
-void CoreMagneticFluxDensity::add_straight_region(const std::string& name, Point origin, Point alongFlux, double length,
+void CoreMagneticFluxDensity::add_straight_region(CoreFluxDensityRegionRole role, const std::string& name, Point origin, Point alongFlux, double length,
                                                   Point acrossFlux, double width, double depth, double fluxShare) {
     if (!(length > 0) || !(width > 0)) {
         return;
     }
     CoreFluxDensityCell cell;
     cell.region = name;
+    cell.role = role;
     cell.polygon = {origin,
                     {origin[0] + alongFlux[0] * length, origin[1] + alongFlux[1] * length},
                     {origin[0] + alongFlux[0] * length + acrossFlux[0] * width, origin[1] + alongFlux[1] * length + acrossFlux[1] * width},
@@ -365,6 +366,7 @@ void CoreMagneticFluxDensity::add_bend_region(const std::string& name, Point cor
         }
         CoreFluxDensityCell cell;
         cell.region = name;
+        cell.role = CoreFluxDensityRegionRole::CORNER;
         for (const auto& point : square.clipped) {
             double drawnX = point[0] < 0 && canonicalWidthA != widthA ? point[0] * stretchA : point[0];
             double x = mirrorX ? -drawnX : drawnX;
@@ -585,7 +587,7 @@ void CoreMagneticFluxDensity::build_closed_core(Core core, double yokeDepth) {
         }
         return LegCuts{topReach, bottomReach};
     };
-    auto addLegStraights = [&](const std::string& name, const std::vector<std::pair<double, double>>& gaps, LegCuts cuts,
+    auto addLegStraights = [&](CoreFluxDensityRegionRole role, const std::string& name, const std::vector<std::pair<double, double>>& gaps, LegCuts cuts,
                                double xLeft, double width, double legDepth) {
         double segmentTop = windowTop - cuts.top;
         double lowest = windowBottom + cuts.bottom;
@@ -602,7 +604,7 @@ void CoreMagneticFluxDensity::build_closed_core(Core core, double yokeDepth) {
         }
         ferrite.push_back({cursor, segmentTop});
         for (const auto& [bottom, top] : ferrite) {
-            add_straight_region(name, {xLeft, bottom}, {0, 1}, top - bottom, {1, 0}, width, legDepth, fluxShare);
+            add_straight_region(role, name, {xLeft, bottom}, {0, 1}, top - bottom, {1, 0}, width, legDepth, fluxShare);
         }
     };
 
@@ -641,14 +643,14 @@ void CoreMagneticFluxDensity::build_closed_core(Core core, double yokeDepth) {
                     bottomYokeThickness, lateralCuts.bottom, bottomYokeCut, yokeDepth, fluxShare, lateralDepth);
 
     useMaterial(postMaterial);
-    addLegStraights(mainName, mainGapIntervals, mainCuts, mainLegInnerFace - mainLegWidth, mainLegWidth, mainDepth);
+    addLegStraights(CoreFluxDensityRegionRole::WOUND_COLUMN, mainName, mainGapIntervals, mainCuts, mainLegInnerFace - mainLegWidth, mainLegWidth, mainDepth);
     useMaterial(coverMaterial);
-    addLegStraights(lateralName, lateralGapIntervals, lateralCuts, lateralLegInnerFace, lateralLegWidth, lateralDepth);
+    addLegStraights(CoreFluxDensityRegionRole::RETURN_COLUMN, lateralName, lateralGapIntervals, lateralCuts, lateralLegInnerFace, lateralLegWidth, lateralDepth);
     useMaterial(coverMaterial);
-    add_straight_region(topName, {mainLegInnerFace + topYokeCut, windowTop}, {1, 0}, windowWidth - topYokeCut - topYokeCut, {0, 1},
+    add_straight_region(CoreFluxDensityRegionRole::YOKE, topName, {mainLegInnerFace + topYokeCut, windowTop}, {1, 0}, windowWidth - topYokeCut - topYokeCut, {0, 1},
                         topYokeThickness, yokeDepth, fluxShare);
     useMaterial(baseMaterial);
-    add_straight_region(bottomName, {mainLegInnerFace + bottomYokeCut, coreBottom}, {1, 0}, windowWidth - bottomYokeCut - bottomYokeCut, {0, 1},
+    add_straight_region(CoreFluxDensityRegionRole::YOKE, bottomName, {mainLegInnerFace + bottomYokeCut, coreBottom}, {1, 0}, windowWidth - bottomYokeCut - bottomYokeCut, {0, 1},
                         bottomYokeThickness, yokeDepth, fluxShare);
     _currentMaterialIndex = 0;
     _currentAir = false;
@@ -788,7 +790,7 @@ void CoreMagneticFluxDensity::build_drum_family(Core core, std::optional<double>
         double radius = letter("A") / 2;
         double length = letter("B");
         double area = core.get_columns()[0].get_area();
-        add_straight_region("rod", {0, -length / 2}, {0, 1}, length, {1, 0}, radius, area * fluxShare / radius, fluxShare);
+        add_straight_region(CoreFluxDensityRegionRole::WOUND_COLUMN, "rod", {0, -length / 2}, {0, 1}, length, {1, 0}, radius, area * fluxShare / radius, fluxShare);
         return;
     }
 
@@ -826,10 +828,10 @@ void CoreMagneticFluxDensity::build_drum_family(Core core, std::optional<double>
         add_bend_region("flange / post corner", {flangeThickness, postTop}, false, true, flangeThickness, postHeight, legCutBottom, postCut, postDepth, share, depth);
         add_bend_region("flange / post corner", {length - flangeThickness, postTop}, true, true, flangeThickness, postHeight, legCutBottom, postCut, postDepth, share, depth);
         double legStraight = windowHeight - legCut - legCutBottom;
-        add_straight_region("flange", {0, postTop + legCutBottom}, {0, 1}, legStraight, {1, 0}, flangeThickness, depth, share);
-        add_straight_region("flange", {length - flangeThickness, postTop + legCutBottom}, {0, 1}, legStraight, {1, 0}, flangeThickness, depth, share);
-        add_straight_region("lid", {flangeThickness + lidCut, height}, {1, 0}, windowWidth - lidCut - lidCut, {0, 1}, lidThickness, lidDepth, share);
-        add_straight_region("post", {flangeThickness + postCut, postBottom}, {1, 0}, windowWidth - postCut - postCut, {0, 1}, postHeight, postDepth, share);
+        add_straight_region(CoreFluxDensityRegionRole::RETURN_COLUMN, "flange", {0, postTop + legCutBottom}, {0, 1}, legStraight, {1, 0}, flangeThickness, depth, share);
+        add_straight_region(CoreFluxDensityRegionRole::RETURN_COLUMN, "flange", {length - flangeThickness, postTop + legCutBottom}, {0, 1}, legStraight, {1, 0}, flangeThickness, depth, share);
+        add_straight_region(CoreFluxDensityRegionRole::YOKE, "lid", {flangeThickness + lidCut, height}, {1, 0}, windowWidth - lidCut - lidCut, {0, 1}, lidThickness, lidDepth, share);
+        add_straight_region(CoreFluxDensityRegionRole::WOUND_COLUMN, "post", {flangeThickness + postCut, postBottom}, {1, 0}, windowWidth - postCut - postCut, {0, 1}, postHeight, postDepth, share);
         for (size_t cell = firstCell; cell < _cells.size(); ++cell) {
             for (auto& point : _cells[cell].polygon) {
                 point = {point[1] - height / 2, point[0] - length / 2};
@@ -872,13 +874,13 @@ void CoreMagneticFluxDensity::build_drum_family(Core core, std::optional<double>
         for (size_t slice = 0; slice < flangeSlices; ++slice) {
             double from = inner * std::pow(ratio, static_cast<double>(slice));
             double to = slice + 1 == flangeSlices ? flangeRadius : inner * std::pow(ratio, static_cast<double>(slice + 1));
-            add_straight_region(name, {from, y}, {1, 0}, to - from, {0, 1}, thickness, pi * (from + to) / 2, fluxShare);
+            add_straight_region(CoreFluxDensityRegionRole::YOKE, name, {from, y}, {1, 0}, to - from, {0, 1}, thickness, pi * (from + to) / 2, fluxShare);
         }
         return postCut;
     };
     double topPostCut = addFlange("top flange", windowTop, false, topFlange);
     double bottomPostCut = addFlange("bottom flange", windowBottom, true, bottomFlange);
-    add_straight_region("post", {0, windowBottom + bottomPostCut}, {0, 1}, windowHeight - topPostCut - bottomPostCut, {1, 0}, postRadius,
+    add_straight_region(CoreFluxDensityRegionRole::WOUND_COLUMN, "post", {0, windowBottom + bottomPostCut}, {0, 1}, windowHeight - topPostCut - bottomPostCut, {1, 0}, postRadius,
                         postDepth, fluxShare);
 
     if (family == CoreShapeFamily::DRUM_RING || family == CoreShapeFamily::DRUM_SEMISHIELDED) {
@@ -904,7 +906,7 @@ void CoreMagneticFluxDensity::build_drum_family(Core core, std::optional<double>
         }
         double ringArea = pi * (outerRadius * outerRadius - innerRadius * innerRadius);
         double ringWidth = outerRadius - innerRadius;
-        add_straight_region(family == CoreShapeFamily::DRUM_RING ? "ring" : "shell", {innerRadius, -ringHeight / 2}, {0, 1}, ringHeight,
+        add_straight_region(CoreFluxDensityRegionRole::RETURN_COLUMN, family == CoreShapeFamily::DRUM_RING ? "ring" : "shell", {innerRadius, -ringHeight / 2}, {0, 1}, ringHeight,
                             {1, 0}, ringWidth, ringArea * fluxShare / ringWidth, fluxShare);
         _currentMaterialIndex = 0;
     }
@@ -937,6 +939,8 @@ void CoreMagneticFluxDensity::build_toroid(Core core) {
         double centre = (inner + outer) / 2;
         CoreFluxDensityCell cell;
         cell.region = "ring";
+        // The whole ring is wound.
+        cell.role = CoreFluxDensityRegionRole::WOUND_COLUMN;
         for (size_t segment = 0; segment <= numberSegments; ++segment) {
             // The closing vertex is the opening one exactly: sin(2 pi) is not 0 in floating point, and a seam vertex off the
             // x axis breaks the crossing count of a point on it.
@@ -1233,6 +1237,7 @@ CoreFluxDensityWaveform CoreMagneticFluxDensity::calculate_waveform(const CoreMa
     result.materials = map.get_materials();
     result.frequency = frequency;
     result.temperature = temperature;
+    result.magnetisationCurveFrequency = map._frequency;
     double largestFlux = -1;
     // The map is odd in the flux (calculate_flux_densities solves |flux| and applies its sign), so a sample whose |flux|
     // was already solved is that solution, sign applied: the same numbers, bit for bit.
@@ -1271,6 +1276,73 @@ CoreFluxDensityWaveform CoreMagneticFluxDensity::calculate_waveform(const CoreMa
         result.alternatingFluxDensityAmplitudes[cell] = (maximum - minimum) / 2;
     }
     return result;
+}
+
+namespace {
+// A cell's signed B(t) as a flux density excitation of its own, the one calculate_core_losses prices.
+OperatingPointExcitation cell_flux_density_excitation(const std::vector<double>& time, const std::vector<double>& data, double frequency) {
+    Waveform cellWaveform;
+    cellWaveform.set_time(time);
+    cellWaveform.set_data(data);
+    SignalDescriptor fluxDensity;
+    fluxDensity.set_waveform(cellWaveform);
+    fluxDensity.set_harmonics(Inputs::calculate_harmonics_data(cellWaveform, frequency));
+    fluxDensity.set_processed(Inputs::calculate_processed_data(fluxDensity, cellWaveform, false));
+    OperatingPointExcitation excitation;
+    excitation.set_frequency(frequency);
+    excitation.set_magnetic_flux_density(fluxDensity);
+    return excitation;
+}
+}  // namespace
+
+OperatingPointExcitation CoreMagneticFluxDensity::calculate_cell_excitation(const CoreFluxDensityWaveform& waveform, size_t cellIndex) {
+    if (cellIndex >= waveform.cells.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Core flux density map: cell " + std::to_string(cellIndex) +
+                                    " is not among the waveform's " + std::to_string(waveform.cells.size()) + " cells");
+    }
+    if (waveform.fluxDensities.size() != waveform.time.size() || waveform.time.size() < 2) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Core flux density map: the flux density waveform has no sampled period");
+    }
+    if (!(waveform.frequency > 0)) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Core flux density map: the flux density waveform has no frequency");
+    }
+    std::vector<double> data(waveform.time.size());
+    for (size_t sample = 0; sample < waveform.time.size(); ++sample) {
+        data[sample] = waveform.fluxDensities[sample][cellIndex];
+    }
+    return cell_flux_density_excitation(waveform.time, data, waveform.frequency);
+}
+
+RoshenDynamicBhLoop CoreMagneticFluxDensity::calculate_cell_bh_loop(const Core& core, const CoreFluxDensityWaveform& waveform, size_t cellIndex) {
+    auto excitation = calculate_cell_excitation(waveform, cellIndex);
+    const auto& cell = waveform.cells[cellIndex];
+    if (cell.air) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Core B-H loop: cell " + std::to_string(cellIndex) + " (" + cell.region +
+                                    ") is air, which has no B-H loop");
+    }
+    if (cell.materialIndex != 0) {
+        throw NotImplementedException("Core B-H loop: cell " + std::to_string(cellIndex) + " (" + cell.region +
+                                      ") is of another material than the core's own; the Roshen loop is built on the core's material");
+    }
+    if (waveform.materials.empty()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Core B-H loop: the flux density waveform carries no materials");
+    }
+    const auto data = excitation.get_magnetic_flux_density()->get_waveform()->get_data();
+    double minimum = std::numeric_limits<double>::max();
+    double maximum = std::numeric_limits<double>::lowest();
+    for (double value : data) {
+        minimum = std::min(minimum, value);
+        maximum = std::max(maximum, value);
+    }
+    // The loop's centre, as get_dynamic_bh_loop reads it, and the map's own H there: the inverse of the magnetisation
+    // curve the cell was solved on (field_strength), odd in B.
+    double magneticFluxDensityDcBias = (maximum + minimum) / 2;
+    auto curve = InitialPermeability::get_magnetisation_curve(waveform.materials[0], waveform.temperature, waveform.magnetisationCurveFrequency);
+    double magneticFieldStrengthDcBias = std::copysign(
+        InitialPermeability::get_magnetomotive_force_for_flux_density(*curve, std::abs(magneticFluxDensityDcBias), 1.0, 1.0, 0.0).first,
+        magneticFluxDensityDcBias);
+    CoreLossesRoshenModel roshen;
+    return roshen.get_dynamic_bh_loop(core, excitation, waveform.temperature, magneticFieldStrengthDcBias);
 }
 
 CoreLossDensityMap CoreMagneticFluxDensity::calculate_core_losses(const Magnetic&, const CoreFluxDensityWaveform& waveform) {
@@ -1330,16 +1402,7 @@ CoreLossDensityMap CoreMagneticFluxDensity::calculate_core_losses(const CoreFlux
             result.volume += waveform.cells[cell].volume;
             continue;
         }
-        Waveform cellWaveform;
-        cellWaveform.set_time(waveform.time);
-        cellWaveform.set_data(data);
-        SignalDescriptor fluxDensity;
-        fluxDensity.set_waveform(cellWaveform);
-        fluxDensity.set_harmonics(Inputs::calculate_harmonics_data(cellWaveform, waveform.frequency));
-        fluxDensity.set_processed(Inputs::calculate_processed_data(fluxDensity, cellWaveform, false));
-        OperatingPointExcitation excitation;
-        excitation.set_frequency(waveform.frequency);
-        excitation.set_magnetic_flux_density(fluxDensity);
+        OperatingPointExcitation excitation = cell_flux_density_excitation(waveform.time, data, waveform.frequency);
         double volumetricLosses = coreLossesModel.get_core_volumetric_losses(material, excitation, waveform.temperature);
         volumetricLossesByWaveform.emplace(std::move(key), volumetricLosses);
         result.volumetricLosses[cell] = volumetricLosses;

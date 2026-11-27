@@ -2368,6 +2368,31 @@ class SvgAnimate : public SVG::Element {
   protected:
     std::string tag() override { return "animate"; }
 };
+
+// An element the SVG library has no class for (defs, clipPath).
+class SvgTaggedElement : public SVG::Element {
+  public:
+    explicit SvgTaggedElement(std::string elementTag) : _elementTag(std::move(elementTag)) {}
+
+  protected:
+    std::string tag() override { return _elementTag; }
+
+  private:
+    std::string _elementTag;
+};
+
+// The clock of the core flux density animation, shared by the B-H loop animation so the two SVGs play in step: the
+// period's samples thinned to at most 64 frames, each held 1/64 of 2 s.
+const size_t coreFluxDensityAnimationMaximumFrames = 64;
+const std::string coreFluxDensityAnimationDuration = "2s";
+std::vector<size_t> core_flux_density_animation_frames(size_t numberSamples) {
+    std::vector<size_t> frames;
+    size_t numberFrames = std::min(numberSamples, coreFluxDensityAnimationMaximumFrames);
+    for (size_t frame = 0; frame < numberFrames; ++frame) {
+        frames.push_back(frame * numberSamples / numberFrames);
+    }
+    return frames;
+}
 }  // namespace
 
 void Painter::paint_core_flux_density(Magnetic magnetic, OperatingPoint operatingPoint, CoreFluxDensityView view, ColorPalette palette, bool showColorBar) {
@@ -2385,12 +2410,7 @@ void Painter::paint_core_flux_density(Magnetic magnetic, OperatingPoint operatin
     // The samples the animation steps through: the whole period, thinned to at most 64 frames.
     std::vector<size_t> frames;
     if (view == CoreFluxDensityView::ANIMATION) {
-        const size_t maximumFrames = 64;
-        size_t numberSamples = result.fluxDensities.size();
-        size_t numberFrames = std::min(numberSamples, maximumFrames);
-        for (size_t frame = 0; frame < numberFrames; ++frame) {
-            frames.push_back(frame * numberSamples / numberFrames);
-        }
+        frames = core_flux_density_animation_frames(result.fluxDensities.size());
     }
     std::vector<double> values(numberCells, 0);
     double largest = 0;
@@ -2478,7 +2498,7 @@ void Painter::paint_core_flux_density(Magnetic magnetic, OperatingPoint operatin
                     colors += (frame == 0 ? "" : ";") + colorOf(std::abs(result.fluxDensities[frames[frame]][cell]));
                 }
                 auto animate = polygon->add_child<SvgAnimate>();
-                animate->set_attr("attributeName", "fill").set_attr("values", colors).set_attr("dur", "2s")
+                animate->set_attr("attributeName", "fill").set_attr("values", colors).set_attr("dur", coreFluxDensityAnimationDuration)
                     .set_attr("repeatCount", "indefinite").set_attr("calcMode", "discrete");
             }
             if (view == CoreFluxDensityView::PEAK && values[cell] >= result.saturationFluxDensity) {
@@ -2552,6 +2572,625 @@ void Painter::paint_core_flux_density(Magnetic magnetic, OperatingPoint operatin
             addText(barX, barY + barHeight / 2 + barHeight * 0.06, caption, "middle");
         }
     }
+}
+
+namespace {
+// The sample of largest |B|; of the samples at that |B| (a repeated vertex where H steps), the one of largest |H|.
+size_t bh_loop_peak_index(const RoshenDynamicBhLoop& loop) {
+    if (loop.magneticFluxDensity.empty() || loop.magneticFluxDensity.size() != loop.magneticFieldStrength.size() ||
+        loop.magneticFluxDensity.size() != loop.time.size()) {
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "B-H plot: the loop has no samples, or not one H and one time per B");
+    }
+    size_t peak = 0;
+    for (size_t index = 1; index < loop.magneticFluxDensity.size(); ++index) {
+        double magnitude = std::abs(loop.magneticFluxDensity[index]);
+        double peakMagnitude = std::abs(loop.magneticFluxDensity[peak]);
+        if (magnitude > peakMagnitude ||
+            (magnitude == peakMagnitude && std::abs(loop.magneticFieldStrength[index]) > std::abs(loop.magneticFieldStrength[peak]))) {
+            peak = index;
+        }
+    }
+    return peak;
+}
+
+// A value with `significant` significant digits, fixed notation.
+std::string bh_format_significant(double value, int significant) {
+    if (!std::isfinite(value)) {
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "B-H plot: a value to print is not finite");
+    }
+    std::stringstream stream;
+    int decimals = 0;
+    if (value != 0) {
+        decimals = std::max(0, significant - 1 - static_cast<int>(std::floor(std::log10(std::abs(value)))));
+    }
+    stream << std::fixed << std::setprecision(decimals) << value;
+    return stream.str();
+}
+
+// Ticks at 1, 2 or 5 times a power of ten, about eight across [minimum, maximum].
+std::vector<double> nice_ticks(double minimum, double maximum, double& step) {
+    double rawStep = (maximum - minimum) / 8;
+    double magnitude = std::pow(10, std::floor(std::log10(rawStep)));
+    double normalized = rawStep / magnitude;
+    step = (normalized < 1.5 ? 1 : normalized < 3 ? 2 : normalized < 7 ? 5 : 10) * magnitude;
+    std::vector<double> ticks;
+    for (double tick = std::ceil(minimum / step) * step; tick <= maximum + 1e-9 * step; tick += step) {
+        ticks.push_back(std::abs(tick) < 1e-9 * step ? 0.0 : tick);
+    }
+    return ticks;
+}
+
+std::string format_tick(double value, double step) {
+    int decimals = std::max(0, -static_cast<int>(std::floor(std::log10(step) + 1e-9)));
+    std::stringstream stream;
+    stream << std::fixed << std::setprecision(decimals) << value;
+    return stream.str();
+}
+
+std::string format_attribute(double value) {
+    std::stringstream stream;
+    stream << std::setprecision(17) << value;
+    return stream.str();
+}
+
+std::string bh_loop_name(const BhLoopPlotLoop& plotLoop) {
+    switch (plotLoop.source) {
+        case BhLoopSource::CORE:
+            return "Core";
+        case BhLoopSource::CORNER_CELL:
+            return "Corner";
+    }
+    throw InvalidInputException(ErrorCode::INVALID_INPUT, "B-H plot: unknown loop source");
+}
+
+std::string bh_loop_color(BhLoopSource source) {
+    switch (source) {
+        case BhLoopSource::CORE:
+            return "#1f77b4";
+        case BhLoopSource::CORNER_CELL:
+            return "#d62728";
+    }
+    throw InvalidInputException(ErrorCode::INVALID_INPUT, "B-H plot: unknown loop source");
+}
+
+std::string bh_loop_source_attribute(BhLoopSource source) {
+    return std::string(magic_enum::enum_name(source));
+}
+
+// A frame's instant within a periodic signal sampled from start over one period.
+double bh_instant_in_period(double frameTime, double start, double period) {
+    double elapsed = frameTime - start;
+    if (elapsed < 0 || elapsed > period * (1 + 1e-9)) {
+        elapsed -= std::floor(elapsed / period) * period;
+    }
+    return start + elapsed;
+}
+
+// Where a sampled signal is at an instant: the samples' linear interpolation (the last sample past the end). The
+// fraction along the step comes back too, for interpolating anything else sampled at the same times.
+std::pair<size_t, double> bh_sample_position(const std::vector<double>& time, double instant) {
+    size_t upper = std::upper_bound(time.begin(), time.end(), instant) - time.begin();
+    if (upper >= time.size()) {
+        return {time.size() - 1, 0.0};
+    }
+    size_t lower = upper == 0 ? 0 : upper - 1;
+    double fraction = upper == 0 || time[upper] == time[lower] ? 0.0 : (instant - time[lower]) / (time[upper] - time[lower]);
+    return {lower, fraction};
+}
+
+double bh_interpolate(const std::vector<double>& values, std::pair<size_t, double> position) {
+    auto [lower, fraction] = position;
+    if (fraction == 0 || lower + 1 >= values.size()) {
+        return values[lower];
+    }
+    return values[lower] + fraction * (values[lower + 1] - values[lower]);
+}
+}  // namespace
+
+BhLoopPlot Painter::calculate_bh_loop_plot(Magnetic magnetic, OperatingPoint operatingPoint) {
+    auto core = magnetic.get_core();
+    const double temperature = operatingPoint.get_conditions().get_ambient_temperature();
+    // The map, at the operating point's ambient temperature and frequency (calculate_waveform's own).
+    auto waveform = CoreMagneticFluxDensity::calculate_waveform(magnetic, operatingPoint);
+
+    BhLoopPlot plot;
+    auto material = core.resolve_material();
+    plot.materialName = material.get_name();
+    auto shape = core.resolve_shape();
+    if (shape.get_name()) {
+        plot.shapeName = shape.get_name().value();
+    }
+    plot.frequency = waveform.frequency;
+    plot.temperature = temperature;
+    plot.saturationFluxDensity = waveform.saturationFluxDensity;
+    plot.majorLoop = CoreLossesRoshenModel::get_major_bh_loop(material, temperature);
+
+    CoreLossesRoshenModel roshen;
+    BhLoopPlotLoop coreLoop;
+    coreLoop.source = BhLoopSource::CORE;
+    coreLoop.loop = roshen.get_dynamic_bh_loop(magnetic, operatingPoint, temperature);
+    coreLoop.peakIndex = bh_loop_peak_index(coreLoop.loop);
+    plot.loops.push_back(coreLoop);
+
+    // The most loaded (largest peak |B|) cell of each role.
+    auto mostLoadedCell = [&](CoreFluxDensityRegionRole role) {
+        std::optional<size_t> found;
+        for (size_t cell = 0; cell < waveform.cells.size(); ++cell) {
+            if (waveform.cells[cell].role != role || waveform.cells[cell].air) {
+                continue;
+            }
+            if (!found || waveform.peakFluxDensities[cell] > waveform.peakFluxDensities[found.value()]) {
+                found = cell;
+            }
+        }
+        return found;
+    };
+    auto addCellLoop = [&](BhLoopSource source, size_t cell) {
+        BhLoopPlotLoop cellLoop;
+        cellLoop.source = source;
+        cellLoop.cellIndex = cell;
+        cellLoop.region = waveform.cells[cell].region;
+        cellLoop.loop = CoreMagneticFluxDensity::calculate_cell_bh_loop(core, waveform, cell);
+        cellLoop.peakIndex = bh_loop_peak_index(cellLoop.loop);
+        plot.loops.push_back(cellLoop);
+    };
+    // A toroid or a rod has no corner.
+    auto cornerCell = mostLoadedCell(CoreFluxDensityRegionRole::CORNER);
+    if (cornerCell) {
+        addCellLoop(BhLoopSource::CORNER_CELL, cornerCell.value());
+    }
+
+    for (size_t frame : core_flux_density_animation_frames(waveform.fluxDensities.size())) {
+        plot.frameTimes.push_back(waveform.time[frame]);
+    }
+
+    const auto& excitation = operatingPoint.get_excitations_per_winding()[0];
+    if (!excitation.get_current()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "B-H plot: the first winding's excitation has no current");
+    }
+    auto standardized = Inputs::standardize_waveform(excitation.get_current().value(), excitation.get_frequency());
+    if (!standardized.get_waveform() || !standardized.get_waveform()->get_time()) {
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "B-H plot: the first winding's current has no sampled waveform");
+    }
+    plot.currentTime = standardized.get_waveform()->get_time().value();
+    plot.current = standardized.get_waveform()->get_data();
+    if (plot.currentTime.size() != plot.current.size() || plot.current.size() < 2) {
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "B-H plot: the first winding's current waveform has no time for every sample");
+    }
+    plot.currentWindingName = magnetic.get_coil().get_functional_description()[0].get_name();
+    return plot;
+}
+
+void Painter::paint_bh_loop(Magnetic magnetic, OperatingPoint operatingPoint) {
+    paint_bh_loop(calculate_bh_loop_plot(magnetic, operatingPoint));
+}
+
+void Painter::paint_bh_loop(const BhLoopPlot& plot) {
+    paint_bh_loop_graph(plot, false);
+}
+
+void Painter::paint_bh_loop_animation(Magnetic magnetic, OperatingPoint operatingPoint) {
+    paint_bh_loop_animation(calculate_bh_loop_plot(magnetic, operatingPoint));
+}
+
+void Painter::paint_bh_loop_animation(const BhLoopPlot& plot) {
+    paint_bh_loop_graph(plot, true);
+}
+
+void Painter::paint_bh_waveform_animation(Magnetic magnetic, OperatingPoint operatingPoint) {
+    paint_bh_waveform_animation(calculate_bh_loop_plot(magnetic, operatingPoint));
+}
+
+void Painter::paint_bh_waveform_animation(const BhLoopPlot& plot) {
+    if (plot.loops.empty() || plot.frameTimes.empty()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "B-H waveform plot: no loop or no animation frames");
+    }
+    if (plot.current.size() < 2 || plot.currentTime.size() != plot.current.size()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "B-H waveform plot: the plot has no current waveform");
+    }
+    // The canvas, as paint_bh_loop's: two panels sharing the time axis (current above, B below) and the legend to the right.
+    const double plotLeft = 90;
+    const double plotTop = 20;
+    const double plotWidth = 620;
+    const double panelHeight = 230;
+    const double panelGap = 40;
+    const double legendLeft = plotLeft + plotWidth + 30;
+    const double lineHeight = 34;
+    const double width = legendLeft + 260;
+    const double height = plotTop + 2 * panelHeight + panelGap + 70;
+    const double milli = 1000;
+    const double micro = 1e6;
+
+    _root = SVG::SVG();
+    _frameFixedByPlot = true;
+    _coreFamily = std::nullopt;
+    _root.set_attr("width", std::to_string(static_cast<int>(width)));
+    _root.set_attr("height", std::to_string(static_cast<int>(height)));
+    _root.set_attr("viewBox", "0 0 " + std::to_string(static_cast<int>(width)) + " " + std::to_string(static_cast<int>(height)));
+
+    auto addText = [&](SVG::Element* parent, double x, double y, const std::string& content, double fontSize, const std::string& color,
+                       const std::string& anchor) {
+        auto* text = parent->add_child<SVG::Text>(x, y, escape_xml(content));
+        text->set_attr("font-size", bh_format_significant(fontSize, 3)).set_attr("fill", color).set_attr("text-anchor", anchor);
+        return text;
+    };
+    auto addLine = [&](SVG::Element* parent, double x1, double y1, double x2, double y2, const std::string& color, double strokeWidth) {
+        // SVG::Line takes (x1, x2, y1, y2).
+        auto* line = parent->add_child<SVG::Line>(x1, x2, y1, y2);
+        line->set_attr("stroke", color).set_attr("stroke-width", bh_format_significant(strokeWidth, 3));
+        return line;
+    };
+
+    // One period from the core loop's start, the instants the B-H loop's dots are at.
+    const auto& coreLoop = plot.loops[0].loop;
+    const double period = 1 / coreLoop.frequency;
+    const double start = coreLoop.time.front();
+    auto toX = [&](double time) { return plotLeft + (time - start) / period * plotWidth; };
+
+    struct Signal {
+        std::string attribute;
+        std::string color;
+        const std::vector<double>* time;
+        const std::vector<double>* values;
+        double scale;
+    };
+    struct Panel {
+        double top;
+        std::string label;
+        std::vector<Signal> signals;
+    };
+    std::vector<Panel> panels(2);
+    panels[0].top = plotTop;
+    panels[0].label = "i (A)";
+    panels[0].signals.push_back({"CURRENT", "#444444", &plot.currentTime, &plot.current, 1.0});
+    panels[1].top = plotTop + panelHeight + panelGap;
+    panels[1].label = "B (mT)";
+    for (const auto& plotLoop : plot.loops) {
+        panels[1].signals.push_back({bh_loop_source_attribute(plotLoop.source), bh_loop_color(plotLoop.source), &plotLoop.loop.time,
+                                     &plotLoop.loop.magneticFluxDensity, milli});
+    }
+
+    double stepTime;
+    auto ticksTime = nice_ticks(0, period * micro, stepTime);
+    for (const auto& panel : panels) {
+        double minimum = std::numeric_limits<double>::max(), maximum = std::numeric_limits<double>::lowest();
+        for (const auto& signal : panel.signals) {
+            for (double value : *signal.values) {
+                minimum = std::min(minimum, value * signal.scale);
+                maximum = std::max(maximum, value * signal.scale);
+            }
+        }
+        if (!(maximum > minimum)) {
+            // A constant signal: a band around it, so it is drawn mid-panel.
+            double pad = std::max(std::abs(maximum) * 0.1, 1e-9);
+            minimum -= pad;
+            maximum += pad;
+        }
+        double span = maximum - minimum;
+        minimum -= 0.08 * span;
+        maximum += 0.08 * span;
+        auto toY = [&](double value) { return panel.top + panelHeight - (value - minimum) / (maximum - minimum) * panelHeight; };
+
+        auto* grid = _root.add_child<SVG::Group>();
+        double stepValue;
+        for (double tick : nice_ticks(minimum, maximum, stepValue)) {
+            double y = toY(tick);
+            addLine(grid, plotLeft, y, plotLeft + plotWidth, y, tick == 0 ? "#9a9a9a" : "#e4e4e4", 1);
+            addLine(grid, plotLeft - 6, y, plotLeft, y, "#444444", 1);
+            addText(grid, plotLeft - 10, y + 5, format_tick(tick, stepValue), 16, "#333333", "end");
+        }
+        bool bottomPanel = &panel == &panels.back();
+        for (double tick : ticksTime) {
+            double x = toX(start + tick / micro);
+            addLine(grid, x, panel.top, x, panel.top + panelHeight, "#e4e4e4", 1);
+            if (bottomPanel) {
+                addLine(grid, x, panel.top + panelHeight, x, panel.top + panelHeight + 6, "#444444", 1);
+                addText(grid, x, panel.top + panelHeight + 24, format_tick(tick, stepTime), 16, "#333333", "middle");
+            }
+        }
+        auto* frame = _root.add_child<SVG::Rect>(plotLeft, panel.top, plotWidth, panelHeight);
+        frame->set_attr("fill", "none").set_attr("stroke", "#444444").set_attr("stroke-width", "1.2");
+        auto* yLabel = addText(&_root, 0, 0, panel.label, 18, "#222222", "middle");
+        yLabel->set_attr("transform", "translate(" + bh_format_significant(plotLeft - 62, 4) + " " +
+                                          bh_format_significant(panel.top + panelHeight / 2, 4) + ") rotate(-90)");
+
+        for (const auto& signal : panel.signals) {
+            const auto& time = *signal.time;
+            const auto& values = *signal.values;
+            // The signal over one period from start, as the frames read it.
+            std::stringstream d;
+            d << std::fixed << std::setprecision(2);
+            const size_t numberPoints = 400;
+            for (size_t index = 0; index <= numberPoints; ++index) {
+                double instant = start + period * static_cast<double>(index) / numberPoints;
+                double value = bh_interpolate(values, bh_sample_position(time, bh_instant_in_period(instant, time.front(), period)));
+                d << (index == 0 ? "M " : " L ") << toX(instant) << " " << toY(value * signal.scale);
+            }
+            auto* path = _root.add_child<SVG::Path>();
+            path->set_attr("d", d.str()).set_attr("fill", "none").set_attr("stroke", signal.color).set_attr("stroke-width", "2.2")
+                .set_attr("stroke-linejoin", "round").set_attr("class", "bh_waveform").set_attr("data-signal", signal.attribute);
+
+            std::string positionsX, positionsY, values_;
+            for (size_t frameIndex = 0; frameIndex < plot.frameTimes.size(); ++frameIndex) {
+                double instant = bh_instant_in_period(plot.frameTimes[frameIndex], start, period);
+                double value = bh_interpolate(values, bh_sample_position(time, bh_instant_in_period(instant, time.front(), period)));
+                std::string separator = frameIndex == 0 ? "" : ";";
+                positionsX += separator + bh_format_significant(toX(instant), 6);
+                positionsY += separator + bh_format_significant(toY(value * signal.scale), 6);
+                values_ += separator + format_attribute(value);
+            }
+            auto* dot = _root.add_child<SVG::Circle>(toX(start), toY(values.front() * signal.scale), 6);
+            dot->set_attr("fill", signal.color).set_attr("stroke", "#ffffff").set_attr("stroke-width", "1.5").set_attr("class", "bh_waveform_dot")
+                .set_attr("data-signal", signal.attribute).set_attr("data-values", values_);
+            const std::vector<std::pair<std::string, std::string>> dotAnimations{{"cx", positionsX}, {"cy", positionsY}};
+            for (const auto& [attribute, animationValues] : dotAnimations) {
+                auto* animation = dot->add_child<SvgAnimate>();
+                animation->set_attr("attributeName", attribute).set_attr("values", animationValues).set_attr("dur", coreFluxDensityAnimationDuration)
+                    .set_attr("repeatCount", "indefinite").set_attr("calcMode", "discrete");
+            }
+        }
+    }
+    addText(&_root, plotLeft + plotWidth / 2, height - 14, "t (\xC2\xB5s)", 18, "#222222", "middle");
+
+    auto* legend = _root.add_child<SVG::Group>();
+    double y = plotTop + 20;
+    auto addEntry = [&](const std::string& color, const std::string& label) {
+        addLine(legend, legendLeft, y - 6, legendLeft + 34, y - 6, color, 3);
+        addText(legend, legendLeft + 44, y, label, 16, "#222222", "start");
+        y += lineHeight;
+    };
+    addEntry("#444444", "Current, " + plot.currentWindingName);
+    for (const auto& plotLoop : plot.loops) {
+        addEntry(bh_loop_color(plotLoop.source), "B, " + bh_loop_name(plotLoop));
+    }
+}
+
+void Painter::paint_bh_loop_graph(const BhLoopPlot& plot, bool animated) {
+    if (plot.loops.empty()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "B-H plot: no loop to draw");
+    }
+    if (animated && plot.frameTimes.empty()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "B-H plot: the animation has no frames");
+    }
+    // The canvas, in pixels: the plot area and, to its right, the legend (as the field plots' colour bar).
+    const double plotLeft = 90;
+    const double plotTop = 20;
+    const double plotWidth = 620;
+    const double plotHeight = 540;
+    const double legendLeft = plotLeft + plotWidth + 30;
+    const double lineHeight = 34;
+    const double width = legendLeft + 260;
+    const double height = plotTop + plotHeight + 70;
+    const double milli = 1000;
+
+    _root = SVG::SVG();
+    _frameFixedByPlot = true;
+    _coreFamily = std::nullopt;
+    _root.set_attr("width", std::to_string(static_cast<int>(width)));
+    _root.set_attr("height", std::to_string(static_cast<int>(height)));
+    _root.set_attr("viewBox", "0 0 " + std::to_string(static_cast<int>(width)) + " " + std::to_string(static_cast<int>(height)));
+
+    // The axes span every loop and the origin in H, and B_sat either way in B.
+    double minimumH = 0, maximumH = 0;
+    double minimumB = -plot.saturationFluxDensity, maximumB = plot.saturationFluxDensity;
+    for (const auto& plotLoop : plot.loops) {
+        for (double value : plotLoop.loop.magneticFieldStrength) {
+            minimumH = std::min(minimumH, value);
+            maximumH = std::max(maximumH, value);
+        }
+        for (double value : plotLoop.loop.magneticFluxDensity) {
+            minimumB = std::min(minimumB, value);
+            maximumB = std::max(maximumB, value);
+        }
+    }
+    if (!(maximumH > minimumH) || !(maximumB > minimumB)) {
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "B-H plot: the loops span no field strength or flux density");
+    }
+    double spanH = maximumH - minimumH;
+    double spanB = maximumB - minimumB;
+    minimumH -= 0.06 * spanH;
+    maximumH += 0.06 * spanH;
+    minimumB -= 0.05 * spanB;
+    maximumB += 0.05 * spanB;
+    auto toX = [&](double fieldStrength) { return plotLeft + (fieldStrength - minimumH) / (maximumH - minimumH) * plotWidth; };
+    auto toY = [&](double fluxDensity) { return plotTop + plotHeight - (fluxDensity - minimumB) / (maximumB - minimumB) * plotHeight; };
+    auto addText = [&](SVG::Element* parent, double x, double y, const std::string& content, double fontSize, const std::string& color,
+                       const std::string& anchor) {
+        auto* text = parent->add_child<SVG::Text>(x, y, escape_xml(content));
+        text->set_attr("font-size", bh_format_significant(fontSize, 3)).set_attr("fill", color).set_attr("text-anchor", anchor);
+        return text;
+    };
+    auto addLine = [&](SVG::Element* parent, double x1, double y1, double x2, double y2, const std::string& color, double strokeWidth) {
+        // SVG::Line takes (x1, x2, y1, y2).
+        auto* line = parent->add_child<SVG::Line>(x1, x2, y1, y2);
+        line->set_attr("stroke", color).set_attr("stroke-width", bh_format_significant(strokeWidth, 3));
+        return line;
+    };
+    auto pathData = [&](const std::vector<double>& fieldStrength, const std::vector<double>& fluxDensity) {
+        std::stringstream stream;
+        stream << std::fixed << std::setprecision(2);
+        for (size_t index = 0; index < fieldStrength.size(); ++index) {
+            stream << (index == 0 ? "M " : " L ") << toX(fieldStrength[index]) << " " << toY(fluxDensity[index]);
+        }
+        return stream.str();
+    };
+
+    // Grid, ticks and their labels.
+    double stepH, stepB;
+    auto ticksH = nice_ticks(minimumH, maximumH, stepH);
+    auto ticksB = nice_ticks(minimumB * milli, maximumB * milli, stepB);
+    auto* grid = _root.add_child<SVG::Group>();
+    for (double tick : ticksH) {
+        double x = toX(tick);
+        addLine(grid, x, plotTop, x, plotTop + plotHeight, tick == 0 ? "#9a9a9a" : "#e4e4e4", 1);
+        addLine(grid, x, plotTop + plotHeight, x, plotTop + plotHeight + 6, "#444444", 1);
+        addText(grid, x, plotTop + plotHeight + 24, format_tick(tick, stepH), 16, "#333333", "middle");
+    }
+    for (double tick : ticksB) {
+        double y = toY(tick / milli);
+        addLine(grid, plotLeft, y, plotLeft + plotWidth, y, tick == 0 ? "#9a9a9a" : "#e4e4e4", 1);
+        addLine(grid, plotLeft - 6, y, plotLeft, y, "#444444", 1);
+        addText(grid, plotLeft - 10, y + 5, format_tick(tick, stepB), 16, "#333333", "end");
+    }
+    auto* frame = _root.add_child<SVG::Rect>(plotLeft, plotTop, plotWidth, plotHeight);
+    frame->set_attr("fill", "none").set_attr("stroke", "#444444").set_attr("stroke-width", "1.2");
+    addText(&_root, plotLeft + plotWidth / 2, plotTop + plotHeight + 56, "H (A/m)", 18, "#222222", "middle");
+    auto* yLabel = addText(&_root, 0, 0, "B (mT)", 18, "#222222", "middle");
+    yLabel->set_attr("transform", "translate(" + bh_format_significant(plotLeft - 62, 4) + " " + bh_format_significant(plotTop + plotHeight / 2, 4) +
+                                      ") rotate(-90)");
+
+    // Everything on the axes is clipped to the plot area: the major loop runs far past the operating loops.
+    std::string clipId = "bhPlotArea" + generate_random_string();
+    auto* definitions = _root.add_child<SvgTaggedElement>("defs");
+    auto* clipPath = definitions->add_child<SvgTaggedElement>("clipPath");
+    clipPath->set_attr("id", clipId);
+    clipPath->add_child<SVG::Rect>(plotLeft, plotTop, plotWidth, plotHeight);
+    auto* plotArea = _root.add_child<SVG::Group>();
+    plotArea->set_attr("clip-path", "url(#" + clipId + ")");
+
+    // The static major loop, both branches, only where it is on the axes (its grid runs to +-Hs in 0.1 A/m steps).
+    {
+        const auto& fieldStrength = plot.majorLoop.magneticFieldStrength;
+        double reach = 0.05 * (maximumH - minimumH);
+        std::vector<size_t> visible;
+        for (size_t index = 0; index < fieldStrength.size(); ++index) {
+            if (fieldStrength[index] >= minimumH - reach && fieldStrength[index] <= maximumH + reach) {
+                visible.push_back(index);
+            }
+        }
+        const size_t maximumPoints = 1500;
+        size_t stride = std::max<size_t>(1, visible.size() / maximumPoints);
+        for (const auto* branch : {&plot.majorLoop.upperMagneticFluxDensity, &plot.majorLoop.lowerMagneticFluxDensity}) {
+            std::vector<double> branchH, branchB;
+            for (size_t position = 0; position < visible.size(); position += stride) {
+                branchH.push_back(fieldStrength[visible[position]]);
+                branchB.push_back((*branch)[visible[position]]);
+            }
+            if (!visible.empty() && (visible.size() - 1) % stride != 0) {
+                branchH.push_back(fieldStrength[visible.back()]);
+                branchB.push_back((*branch)[visible.back()]);
+            }
+            if (branchH.size() < 2) {
+                continue;
+            }
+            auto* path = plotArea->add_child<SVG::Path>();
+            path->set_attr("d", pathData(branchH, branchB)).set_attr("fill", "none").set_attr("stroke", "#8c8c8c")
+                .set_attr("stroke-width", "1.4").set_attr("stroke-dasharray", "6 4").set_attr("class", "bh_major_loop");
+        }
+    }
+
+    // B_sat at the operating temperature, either way.
+    const std::string saturationColor = "#ff7f0e";
+    for (double sign : {1.0, -1.0}) {
+        double y = toY(sign * plot.saturationFluxDensity);
+        auto* line = addLine(plotArea, plotLeft, y, plotLeft + plotWidth, y, saturationColor, 1.6);
+        line->set_attr("stroke-dasharray", "10 5").set_attr("class", "bh_saturation");
+        line->set_attr("data-saturation-flux-density", format_attribute(sign * plot.saturationFluxDensity));
+    }
+
+    // The loops: the core's last, on top.
+    std::vector<size_t> drawingOrder;
+    for (size_t loopIndex = plot.loops.size(); loopIndex-- > 0;) {
+        drawingOrder.push_back(loopIndex);
+    }
+    for (size_t loopIndex : drawingOrder) {
+        const auto& plotLoop = plot.loops[loopIndex];
+        const auto& loop = plotLoop.loop;
+        std::string color = bh_loop_color(plotLoop.source);
+        bool isCore = plotLoop.source == BhLoopSource::CORE;
+        std::string d = pathData(loop.magneticFieldStrength, loop.magneticFluxDensity);
+        auto* path = plotArea->add_child<SVG::Path>();
+        path->set_attr("d", d).set_attr("fill", "none").set_attr("stroke", color).set_attr("stroke-width", isCore ? "2.4" : "1.8")
+            .set_attr("stroke-linejoin", "round").set_attr("class", "bh_loop").set_attr("data-source", bh_loop_source_attribute(plotLoop.source));
+        if (animated) {
+            // The full loop faint, and its trace drawing itself over the period.
+            path->set_attr("opacity", "0.22");
+            std::vector<double> arcLength(loop.time.size(), 0);
+            for (size_t index = 1; index < loop.time.size(); ++index) {
+                arcLength[index] = arcLength[index - 1] + std::hypot(toX(loop.magneticFieldStrength[index]) - toX(loop.magneticFieldStrength[index - 1]),
+                                                                     toY(loop.magneticFluxDensity[index]) - toY(loop.magneticFluxDensity[index - 1]));
+            }
+            if (!(arcLength.back() > 0)) {
+                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "B-H plot: a loop has no length to animate");
+            }
+            const double period = 1 / loop.frequency;
+            const double start = loop.time.front();
+            std::string offsets, positionsX, positionsY;
+            for (size_t frameIndex = 0; frameIndex < plot.frameTimes.size(); ++frameIndex) {
+                // The frame's instant within this loop's period (both are periodic; the loop starts at its excitation's t0).
+                auto position = bh_sample_position(loop.time, bh_instant_in_period(plot.frameTimes[frameIndex], start, period));
+                double fieldStrength = bh_interpolate(loop.magneticFieldStrength, position);
+                double fluxDensity = bh_interpolate(loop.magneticFluxDensity, position);
+                double length = bh_interpolate(arcLength, position);
+                std::string separator = frameIndex == 0 ? "" : ";";
+                offsets += separator + bh_format_significant(1 - length / arcLength.back(), 4);
+                positionsX += separator + bh_format_significant(toX(fieldStrength), 6);
+                positionsY += separator + bh_format_significant(toY(fluxDensity), 6);
+            }
+            auto* trace = plotArea->add_child<SVG::Path>();
+            trace->set_attr("d", d).set_attr("fill", "none").set_attr("stroke", color).set_attr("stroke-width", isCore ? "2.6" : "2")
+                .set_attr("stroke-linejoin", "round").set_attr("pathLength", "1").set_attr("stroke-dasharray", "1 1")
+                .set_attr("stroke-dashoffset", "1").set_attr("class", "bh_trace").set_attr("data-source", bh_loop_source_attribute(plotLoop.source));
+            auto* traceAnimation = trace->add_child<SvgAnimate>();
+            traceAnimation->set_attr("attributeName", "stroke-dashoffset").set_attr("values", offsets)
+                .set_attr("dur", coreFluxDensityAnimationDuration).set_attr("repeatCount", "indefinite").set_attr("calcMode", "discrete");
+            auto* dot = plotArea->add_child<SVG::Circle>(toX(loop.magneticFieldStrength.front()), toY(loop.magneticFluxDensity.front()), isCore ? 6.5 : 5.5);
+            dot->set_attr("fill", color).set_attr("stroke", "#ffffff").set_attr("stroke-width", "1.5").set_attr("class", "bh_dot")
+                .set_attr("data-source", bh_loop_source_attribute(plotLoop.source));
+            const std::vector<std::pair<std::string, std::string>> dotAnimations{{"cx", positionsX}, {"cy", positionsY}};
+            for (const auto& [attribute, values] : dotAnimations) {
+                auto* animation = dot->add_child<SvgAnimate>();
+                animation->set_attr("attributeName", attribute).set_attr("values", values).set_attr("dur", coreFluxDensityAnimationDuration)
+                    .set_attr("repeatCount", "indefinite").set_attr("calcMode", "discrete");
+            }
+        }
+
+        // The peak point and, biased, the DC point.
+        double peakH = loop.magneticFieldStrength[plotLoop.peakIndex];
+        double peakB = loop.magneticFluxDensity[plotLoop.peakIndex];
+        auto* peak = plotArea->add_child<SVG::Circle>(toX(peakH), toY(peakB), isCore ? 5 : 4);
+        peak->set_attr("fill", "#ffffff").set_attr("stroke", color).set_attr("stroke-width", "2").set_attr("class", "bh_peak")
+            .set_attr("data-source", bh_loop_source_attribute(plotLoop.source)).set_attr("data-field-strength", format_attribute(peakH))
+            .set_attr("data-flux-density", format_attribute(peakB));
+        bool biased = loop.magneticFluxDensityDcBias != 0;
+        if (biased) {
+            double x = toX(loop.magneticFieldStrengthDcBias);
+            double y = toY(loop.magneticFluxDensityDcBias);
+            auto* dcPoint = plotArea->add_child<SVG::Path>();
+            std::stringstream cross;
+            cross << std::fixed << std::setprecision(2) << "M " << x - 6 << " " << y - 6 << " L " << x + 6 << " " << y + 6 << " M " << x - 6 << " "
+                  << y + 6 << " L " << x + 6 << " " << y - 6;
+            dcPoint->set_attr("d", cross.str()).set_attr("stroke", color).set_attr("stroke-width", "2.2").set_attr("fill", "none")
+                .set_attr("class", "bh_dc_point").set_attr("data-source", bh_loop_source_attribute(plotLoop.source))
+                .set_attr("data-field-strength", format_attribute(loop.magneticFieldStrengthDcBias))
+                .set_attr("data-flux-density", format_attribute(loop.magneticFluxDensityDcBias));
+        }
+    }
+
+    // Legend: one line per loop (its name and f * oint H dB, the split in data attributes), the major loop and B_sat.
+    auto* legend = _root.add_child<SVG::Group>();
+    double y = plotTop + 20;
+    auto addEntry = [&](const std::string& color, double strokeWidth, const std::string& dashes, const std::string& label) {
+        auto* swatch = addLine(legend, legendLeft, y - 6, legendLeft + 34, y - 6, color, strokeWidth);
+        if (!dashes.empty()) {
+            swatch->set_attr("stroke-dasharray", dashes);
+        }
+        auto* text = addText(legend, legendLeft + 44, y, label, 16, "#222222", "start");
+        y += lineHeight;
+        return text;
+    };
+    for (const auto& plotLoop : plot.loops) {
+        const auto& loop = plotLoop.loop;
+        auto* lossText = addEntry(bh_loop_color(plotLoop.source), 3, "",
+                                  bh_loop_name(plotLoop) + "  " + bh_format_significant(loop.totalVolumetricLosses / 1000, 3) + " kW/m\xC2\xB3");
+        lossText->set_attr("class", "bh_legend_losses").set_attr("data-source", bh_loop_source_attribute(plotLoop.source))
+            .set_attr("data-total-volumetric-losses", format_attribute(loop.totalVolumetricLosses))
+            .set_attr("data-hysteresis-volumetric-losses", format_attribute(loop.hysteresisVolumetricLosses))
+            .set_attr("data-eddy-current-volumetric-losses", format_attribute(loop.eddyCurrentVolumetricLosses))
+            .set_attr("data-excess-volumetric-losses", format_attribute(loop.excessVolumetricLosses));
+    }
+    addEntry("#8c8c8c", 1.6, "6 4", plot.materialName + " major loop");
+    addEntry(saturationColor, 1.6, "10 5", "Bsat " + bh_format_significant(plot.saturationFluxDensity * milli, 3) + " mT");
 }
 
 void Painter::paint_electric_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex, std::optional<Field> inputField, ElectricFieldVisualizationModel model, ColorPalette colorPalette) {
@@ -3818,7 +4457,7 @@ void Painter::paint_temperature_field(Magnetic magnetic, const std::map<std::str
 std::string Painter::export_svg() {
     // Autoscale to fit all content before exporting, except a wire drawing, which paint_wire
     // already framed with the wire's own canvas.
-    if (!_frameFixedByWire) {
+    if (!_frameFixedByWire && !_frameFixedByPlot) {
         _root.autoscale();
     }
     

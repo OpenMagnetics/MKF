@@ -8,6 +8,9 @@
 #include "physical_models/StrayCapacitance.h"
 #include "physical_models/LeakageInductance.h"
 #include "physical_models/MagneticField.h"
+#include "physical_models/CoreMagneticFluxDensity.h"
+#include "physical_models/CoreLosses.h"
+#include <magic_enum.hpp>
 #include "constructive_models/Bobbin.h"
 #include "support/CoilMesher.h"
 #include <source_location>
@@ -6185,6 +6188,326 @@ namespace {
                 CHECK((svg.find("<animate") != std::string::npos) == (view == CoreFluxDensityView::ANIMATION));
                 CHECK((svg.find("kW/m3") != std::string::npos) == (view == CoreFluxDensityView::VOLUMETRIC_LOSSES));
             }
+        }
+        settings.reset();
+    }
+
+    // The B-H loop plots: every element of the SVGs read back by tag, class and data attributes. Plain find, not
+    // std::regex: libstdc++'s regex recurses per character and overflows the stack on the long animate values.
+    std::vector<std::string> bh_svg_tags(const std::string& svg, const std::string& tag) {
+        std::vector<std::string> tags;
+        const std::string opening = "<" + tag;
+        for (size_t start = svg.find(opening); start != std::string::npos; start = svg.find(opening, start + 1)) {
+            char next = svg[start + opening.size()];
+            if (next != ' ' && next != '>' && next != '/' && next != '\n' && next != '\t') {
+                continue;
+            }
+            size_t end = svg.find('>', start);
+            REQUIRE(end != std::string::npos);
+            tags.push_back(svg.substr(start, end - start + 1));
+        }
+        return tags;
+    }
+    std::map<std::string, std::string> bh_svg_attributes(const std::string& text) {
+        std::map<std::string, std::string> attributes;
+        for (size_t equals = text.find("=\""); equals != std::string::npos; equals = text.find("=\"", equals + 1)) {
+            size_t nameStart = equals;
+            while (nameStart > 0 && (std::isalnum(static_cast<unsigned char>(text[nameStart - 1])) || text[nameStart - 1] == '-')) {
+                --nameStart;
+            }
+            size_t valueEnd = text.find('"', equals + 2);
+            REQUIRE(valueEnd != std::string::npos);
+            attributes[text.substr(nameStart, equals - nameStart)] = text.substr(equals + 2, valueEnd - equals - 2);
+            equals = valueEnd;
+        }
+        return attributes;
+    }
+    struct BhSvgElement {
+        std::string source;
+        std::map<std::string, std::string> attributes;
+    };
+    std::vector<BhSvgElement> bh_svg_elements(const std::string& svg, const std::string& tag, const std::string& cssClass) {
+        std::vector<BhSvgElement> elements;
+        for (const auto& text : bh_svg_tags(svg, tag)) {
+            auto attributes = bh_svg_attributes(text);
+            if (attributes.contains("class") && attributes["class"] == cssClass) {
+                BhSvgElement element;
+                element.attributes = attributes;
+                element.source = element.attributes["data-source"];
+                elements.push_back(element);
+            }
+        }
+        return elements;
+    }
+
+    // The checks every B-H plot passes: each loop's peak point is its largest |B| and the H there, the SVG marks it with
+    // those values, and the legend's loss is the loop's own f * oint H dB.
+    void check_bh_loop_plot(const BhLoopPlot& plot, const std::string& svg) {
+        auto peaks = bh_svg_elements(svg, "circle", "bh_peak");
+        auto legendLosses = bh_svg_elements(svg, "text", "bh_legend_losses");
+        REQUIRE(peaks.size() == plot.loops.size());
+        REQUIRE(legendLosses.size() == plot.loops.size());
+        for (const auto& plotLoop : plot.loops) {
+            const auto& loop = plotLoop.loop;
+            std::string source(magic_enum::enum_name(plotLoop.source));
+            INFO(source);
+            double largest = 0;
+            for (double value : loop.magneticFluxDensity) {
+                largest = std::max(largest, std::abs(value));
+            }
+            double peakB = loop.magneticFluxDensity[plotLoop.peakIndex];
+            double peakH = loop.magneticFieldStrength[plotLoop.peakIndex];
+            CHECK(std::abs(peakB) == largest);
+            // Of the samples at the peak |B| (a vertex repeated where H steps), the tip: the largest |H|.
+            for (size_t index = 0; index < loop.magneticFluxDensity.size(); ++index) {
+                if (std::abs(loop.magneticFluxDensity[index]) == largest) {
+                    CHECK(std::abs(loop.magneticFieldStrength[index]) <= std::abs(peakH));
+                }
+            }
+            auto peak = std::find_if(peaks.begin(), peaks.end(), [&](const BhSvgElement& element) { return element.source == source; });
+            REQUIRE(peak != peaks.end());
+            CHECK_THAT(std::stod(peak->attributes["data-flux-density"]), Catch::Matchers::WithinRel(peakB, 1e-12));
+            CHECK_THAT(std::stod(peak->attributes["data-field-strength"]), Catch::Matchers::WithinRel(peakH, 1e-12));
+            auto losses = std::find_if(legendLosses.begin(), legendLosses.end(), [&](const BhSvgElement& element) { return element.source == source; });
+            REQUIRE(losses != legendLosses.end());
+            CHECK(loop.totalVolumetricLosses > 0);
+            CHECK_THAT(std::stod(losses->attributes["data-total-volumetric-losses"]), Catch::Matchers::WithinRel(loop.totalVolumetricLosses, 1e-12));
+            CHECK_THAT(loop.hysteresisVolumetricLosses + loop.eddyCurrentVolumetricLosses + loop.excessVolumetricLosses,
+                       Catch::Matchers::WithinRel(loop.totalVolumetricLosses, 1e-12));
+        }
+        auto saturation = bh_svg_elements(svg, "line", "bh_saturation");
+        REQUIRE(saturation.size() == 2);
+        CHECK_THAT(std::stod(saturation[0].attributes["data-saturation-flux-density"]), Catch::Matchers::WithinRel(plot.saturationFluxDensity, 1e-12));
+        CHECK(svg.find("kW/m\xC2\xB3") != std::string::npos);
+    }
+
+    // Writes the static graph and the animation of the plot and checks both.
+    void paint_and_check_bh_loop_plot(const BhLoopPlot& plot, const std::string& name, const OpenMagnetics::Magnetic& magnetic,
+                                      const OperatingPoint& operatingPoint) {
+        auto staticFile = outputFilePath;
+        staticFile.append("Test_Painter_BH_Loop_" + name + ".svg");
+        std::filesystem::remove(staticFile);
+        Painter staticPainter(staticFile);
+        staticPainter.paint_bh_loop(plot);
+        auto staticSvg = staticPainter.export_svg();
+        REQUIRE(std::filesystem::exists(staticFile));
+        CHECK(staticSvg.find("<animate") == std::string::npos);
+        check_bh_loop_plot(plot, staticSvg);
+
+        auto animationFile = outputFilePath;
+        animationFile.append("Test_Painter_BH_Loop_" + name + "_Animation.svg");
+        std::filesystem::remove(animationFile);
+        Painter animationPainter(animationFile);
+        animationPainter.paint_bh_loop_animation(plot);
+        auto animationSvg = animationPainter.export_svg();
+        REQUIRE(std::filesystem::exists(animationFile));
+        check_bh_loop_plot(plot, animationSvg);
+
+        // In step with the core flux density animation: as many frames, on the same 2 s clock.
+        Painter fluxPainter(outputFilePath / ("Test_Painter_BH_Loop_" + name + "_Flux_Animation.svg"));
+        fluxPainter.paint_core_flux_density(magnetic, operatingPoint, CoreFluxDensityView::ANIMATION);
+        auto fluxSvg = fluxPainter.export_svg();
+        auto fluxAnimations = bh_svg_tags(fluxSvg, "animate");
+        REQUIRE(!fluxAnimations.empty());
+        auto fluxValues = bh_svg_attributes(fluxAnimations.front());
+        REQUIRE(fluxValues.contains("values"));
+        size_t fluxFrames = std::count(fluxValues["values"].begin(), fluxValues["values"].end(), ';') + 1;
+        CHECK(plot.frameTimes.size() == fluxFrames);
+        size_t numberAnimations = 0;
+        for (const auto& text : bh_svg_tags(animationSvg, "animate")) {
+            ++numberAnimations;
+            auto attributes = bh_svg_attributes(text);
+            CHECK(attributes["dur"] == "2s");
+            CHECK(attributes["calcMode"] == "discrete");
+            REQUIRE(attributes.contains("values"));
+            CHECK(size_t(std::count(attributes["values"].begin(), attributes["values"].end(), ';') + 1) == plot.frameTimes.size());
+        }
+        // Per loop: the trace's dash offset, and the dot's cx and cy.
+        CHECK(numberAnimations == 3 * plot.loops.size());
+        CHECK(bh_svg_elements(animationSvg, "path", "bh_trace").size() == plot.loops.size());
+        CHECK(bh_svg_elements(animationSvg, "circle", "bh_dot").size() == plot.loops.size());
+
+        // The waveforms, in step with the B-H loop: one dot on the current and one on each loop's B(t), and at every frame
+        // a B dot marks the B its loop's B-H dot is at (on the B-H plot y is affine in B, so the two series are affine).
+        Painter waveformPainter(outputFilePath / ("Test_Painter_BH_Loop_" + name + "_Waveform_Animation.svg"));
+        waveformPainter.paint_bh_waveform_animation(plot);
+        auto waveformSvg = waveformPainter.export_svg();
+        auto waveformDots = bh_svg_elements(waveformSvg, "circle", "bh_waveform_dot");
+        REQUIRE(waveformDots.size() == plot.loops.size() + 1);
+        size_t waveformAnimations = 0;
+        for (const auto& text : bh_svg_tags(waveformSvg, "animate")) {
+            ++waveformAnimations;
+            auto attributes = bh_svg_attributes(text);
+            CHECK(attributes["dur"] == "2s");
+            CHECK(attributes["calcMode"] == "discrete");
+            CHECK(size_t(std::count(attributes["values"].begin(), attributes["values"].end(), ';') + 1) == plot.frameTimes.size());
+        }
+        CHECK(waveformAnimations == 2 * waveformDots.size());
+        auto splitNumbers = [](const std::string& text) {
+            std::vector<double> numbers;
+            std::stringstream stream(text);
+            std::string item;
+            while (std::getline(stream, item, ';')) {
+                numbers.push_back(std::stod(item));
+            }
+            return numbers;
+        };
+        // The B-H dots' cy series, in document order (each dot is followed by its cx and cy animations).
+        std::map<std::string, std::vector<double>> bhDotY;
+        {
+            size_t searchFrom = 0;
+            while (true) {
+                size_t dotStart = animationSvg.find("class=\"bh_dot\"", searchFrom);
+                if (dotStart == std::string::npos) {
+                    break;
+                }
+                size_t tagStart = animationSvg.rfind("<circle", dotStart);
+                auto dotAttributes = bh_svg_attributes(animationSvg.substr(tagStart, animationSvg.find('>', dotStart) - tagStart + 1));
+                size_t close = animationSvg.find("</circle>", dotStart);
+                for (const auto& text : bh_svg_tags(animationSvg.substr(dotStart, close - dotStart), "animate")) {
+                    auto attributes = bh_svg_attributes(text);
+                    if (attributes["attributeName"] == "cy") {
+                        bhDotY[dotAttributes["data-source"]] = splitNumbers(attributes["values"]);
+                    }
+                }
+                searchFrom = close;
+            }
+        }
+        for (const auto& plotLoop : plot.loops) {
+            std::string source(magic_enum::enum_name(plotLoop.source));
+            INFO(source);
+            auto dot = std::find_if(waveformDots.begin(), waveformDots.end(), [&](const BhSvgElement& element) { return element.attributes.at("data-signal") == source; });
+            REQUIRE(dot != waveformDots.end());
+            auto fluxDensities = splitNumbers(dot->attributes.at("data-values"));
+            const auto& y = bhDotY[source];
+            REQUIRE(y.size() == fluxDensities.size());
+            size_t lowest = std::min_element(fluxDensities.begin(), fluxDensities.end()) - fluxDensities.begin();
+            size_t highest = std::max_element(fluxDensities.begin(), fluxDensities.end()) - fluxDensities.begin();
+            REQUIRE(fluxDensities[highest] > fluxDensities[lowest]);
+            double slope = (y[highest] - y[lowest]) / (fluxDensities[highest] - fluxDensities[lowest]);
+            for (size_t frame = 0; frame < y.size(); ++frame) {
+                // The B-H plot writes cy with six significant digits.
+                CHECK_THAT(y[frame], Catch::Matchers::WithinAbs(y[lowest] + slope * (fluxDensities[frame] - fluxDensities[lowest]), 0.01));
+            }
+        }
+    }
+
+    // The core's B-H loop (B = flux / Ae, the loop MKF prices) and those of the wound column's and the corners' most loaded
+    // cells of the flux density map, for a DC-biased gapped inductor: every loop centred at its own B_dc.
+    TEST_CASE("Test_Painter_BH_Loop_Biased_Inductor", "[support][painter][bh-loop-painter][smoke-test]") {
+        settings.reset();
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(100000, 100e-6, 25, WaveformLabel::TRIANGULAR, 4, 0.5, 5);
+        auto magnetic = OpenMagneticsTesting::get_quick_magnetic("E 42/21/20", OpenMagneticsTesting::get_ground_gap(0.001), {20}, 1, "N87");
+        auto operatingPoint = inputs.get_operating_point(0);
+        auto plot = Painter::calculate_bh_loop_plot(magnetic, operatingPoint);
+        REQUIRE(plot.loops.size() == 2);
+        CHECK(plot.loops[0].source == BhLoopSource::CORE);
+        CHECK(plot.loops[1].source == BhLoopSource::CORNER_CELL);
+        CHECK(plot.temperature == 25);
+        CHECK(plot.frequency == 100000);
+
+        // The core's loop is get_dynamic_bh_loop's for the magnetic, as it is.
+        CoreLossesRoshenModel roshen;
+        auto coreLoop = roshen.get_dynamic_bh_loop(magnetic, operatingPoint, 25);
+        CHECK(plot.loops[0].loop.totalVolumetricLosses == coreLoop.totalVolumetricLosses);
+        CHECK(plot.loops[0].loop.magneticFluxDensity == coreLoop.magneticFluxDensity);
+        CHECK(plot.loops[0].loop.magneticFieldStrength == coreLoop.magneticFieldStrength);
+
+        // Each cell's loop is centred at the centre of that cell's own B(t) in the map, which is biased.
+        auto waveform = CoreMagneticFluxDensity::calculate_waveform(magnetic, operatingPoint);
+        for (size_t loopIndex = 1; loopIndex < plot.loops.size(); ++loopIndex) {
+            const auto& plotLoop = plot.loops[loopIndex];
+            REQUIRE(plotLoop.cellIndex);
+            size_t cell = plotLoop.cellIndex.value();
+            double minimum = std::numeric_limits<double>::max(), maximum = std::numeric_limits<double>::lowest();
+            for (const auto& sample : waveform.fluxDensities) {
+                minimum = std::min(minimum, sample[cell]);
+                maximum = std::max(maximum, sample[cell]);
+            }
+            INFO(plotLoop.region << ": B from " << minimum << " to " << maximum << " T");
+            CHECK(minimum > 0);
+            CHECK_THAT(plotLoop.loop.magneticFluxDensityDcBias, Catch::Matchers::WithinRel((maximum + minimum) / 2, 1e-12));
+            CHECK(plotLoop.loop.magneticFieldStrengthDcBias > 0);
+            CHECK(plotLoop.loop.hysteresisDcBiasFactor > 1);
+            CHECK(waveform.cells[cell].role == CoreFluxDensityRegionRole::CORNER);
+        }
+        // The core's loop centred at its own B_dc, the centre of B = flux / Ae.
+        const auto& core = plot.loops[0].loop;
+        double minimum = *std::min_element(core.magneticFluxDensity.begin(), core.magneticFluxDensity.end());
+        double maximum = *std::max_element(core.magneticFluxDensity.begin(), core.magneticFluxDensity.end());
+        CHECK(minimum > 0);
+        CHECK_THAT(core.magneticFluxDensityDcBias, Catch::Matchers::WithinRel((maximum + minimum) / 2, 1e-12));
+        // The corner crowds the flux at the window's corner: its most loaded cell peaks above the core's B = flux / Ae.
+        CHECK(std::abs(plot.loops[1].loop.magneticFluxDensity[plot.loops[1].peakIndex]) >
+              std::abs(plot.loops[0].loop.magneticFluxDensity[plot.loops[0].peakIndex]));
+        // The current-driven inductor's B follows its current: the frame of the largest current is that of the largest B.
+        REQUIRE(plot.current.size() == plot.currentTime.size());
+        {
+            Painter waveformPainter(outputFilePath / "Test_Painter_BH_Loop_Biased_Inductor_Waveform.svg");
+            waveformPainter.paint_bh_waveform_animation(plot);
+            auto dots = bh_svg_elements(waveformPainter.export_svg(), "circle", "bh_waveform_dot");
+            auto valuesOf = [&](const std::string& signal) {
+                auto dot = std::find_if(dots.begin(), dots.end(), [&](const BhSvgElement& element) { return element.attributes.at("data-signal") == signal; });
+                REQUIRE(dot != dots.end());
+                std::vector<double> numbers;
+                std::stringstream stream(dot->attributes.at("data-values"));
+                std::string item;
+                while (std::getline(stream, item, ';')) {
+                    numbers.push_back(std::stod(item));
+                }
+                return numbers;
+            };
+            auto current = valuesOf("CURRENT");
+            auto fluxDensity = valuesOf("CORE");
+            REQUIRE(current.size() == fluxDensity.size());
+            CHECK(std::max_element(current.begin(), current.end()) - current.begin() ==
+                  std::max_element(fluxDensity.begin(), fluxDensity.end()) - fluxDensity.begin());
+            CHECK(std::min_element(current.begin(), current.end()) - current.begin() ==
+                  std::min_element(fluxDensity.begin(), fluxDensity.end()) - fluxDensity.begin());
+        }
+
+        paint_and_check_bh_loop_plot(plot, "Biased_Inductor", magnetic, operatingPoint);
+        Painter painter(outputFilePath / "Test_Painter_BH_Loop_Biased_Inductor.svg");
+        painter.paint_bh_loop(plot);
+        auto svg = painter.export_svg();
+        auto dcPoints = bh_svg_elements(svg, "path", "bh_dc_point");
+        REQUIRE(dcPoints.size() == plot.loops.size());
+        for (const auto& plotLoop : plot.loops) {
+            std::string source(magic_enum::enum_name(plotLoop.source));
+            auto dcPoint = std::find_if(dcPoints.begin(), dcPoints.end(), [&](const BhSvgElement& element) { return element.source == source; });
+            REQUIRE(dcPoint != dcPoints.end());
+            CHECK_THAT(std::stod(dcPoint->attributes["data-flux-density"]), Catch::Matchers::WithinRel(plotLoop.loop.magneticFluxDensityDcBias, 1e-12));
+            CHECK_THAT(std::stod(dcPoint->attributes["data-field-strength"]), Catch::Matchers::WithinRel(plotLoop.loop.magneticFieldStrengthDcBias, 1e-12));
+        }
+        settings.reset();
+    }
+
+    // An unbiased ferrite transformer (no DC point drawn) and a toroid, which has no corner: the core's loop only.
+    TEST_CASE("Test_Painter_BH_Loop_Unbiased_Transformer_And_Toroid", "[support][painter][bh-loop-painter][smoke-test]") {
+        settings.reset();
+        {
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(100000, 1e-3, 25, WaveformLabel::RECTANGULAR, 200, 0.5, 0, {2});
+            auto magnetic = OpenMagneticsTesting::get_quick_magnetic("ETD 34/17/11", OpenMagneticsTesting::get_residual_gap(), {24, 12}, 1, "N87");
+            auto operatingPoint = inputs.get_operating_point(0);
+            auto plot = Painter::calculate_bh_loop_plot(magnetic, operatingPoint);
+            REQUIRE(plot.loops.size() == 2);
+            for (const auto& plotLoop : plot.loops) {
+                CHECK(plotLoop.loop.magneticFluxDensityDcBias == 0);
+                CHECK(plotLoop.loop.hysteresisDcBiasFactor == 1);
+            }
+            paint_and_check_bh_loop_plot(plot, "Unbiased_Transformer", magnetic, operatingPoint);
+            Painter painter(outputFilePath / "Test_Painter_BH_Loop_Unbiased_Transformer.svg");
+            painter.paint_bh_loop(plot);
+            CHECK(bh_svg_elements(painter.export_svg(), "path", "bh_dc_point").empty());
+        }
+        {
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(100000, 100e-6, 25, WaveformLabel::TRIANGULAR, 0.5, 0.5, 0);
+            auto magnetic = OpenMagneticsTesting::get_quick_magnetic("T 40/24/16", json::parse("[]"), {20}, 1, "N87");
+            auto operatingPoint = inputs.get_operating_point(0);
+            auto plot = Painter::calculate_bh_loop_plot(magnetic, operatingPoint);
+            REQUIRE(plot.loops.size() == 1);
+            CHECK(plot.loops[0].source == BhLoopSource::CORE);
+            paint_and_check_bh_loop_plot(plot, "Toroid", magnetic, operatingPoint);
         }
         settings.reset();
     }

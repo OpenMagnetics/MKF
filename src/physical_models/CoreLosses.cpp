@@ -3659,6 +3659,7 @@ struct RoshenMajorLoopBranches {
     double saturationMagneticFluxDensity;
     double coerciveForce;
     double remanence;
+    std::vector<double> fieldStrength;
     std::vector<double> upper;
     std::vector<double> lower;
 };
@@ -3717,7 +3718,8 @@ const RoshenMajorLoopBranches& roshen_major_loop_branches(double saturationMagne
         return magneticFluxDensity;
     };
 
-    RoshenMajorLoopBranches branches{saturationMagneticFieldStrength, saturationMagneticFluxDensity, coerciveForce, remanence, {}, {}};
+    RoshenMajorLoopBranches branches{saturationMagneticFieldStrength, saturationMagneticFluxDensity, coerciveForce, remanence,
+                                     magneticFieldStrengthPoints, {}, {}};
     branches.upper.reserve(magneticFieldStrengthPoints.size());
     branches.lower.reserve(magneticFieldStrengthPoints.size());
     for (auto& magneticFieldStrength : magneticFieldStrengthPoints) {
@@ -3808,6 +3810,24 @@ static double roshen_static_branch_field_strength(double magneticFluxDensity, bo
     }
     double fieldStrength = x - Hc;
     return rising ? -fieldStrength : fieldStrength;
+}
+
+RoshenMajorBhLoop CoreLossesRoshenModel::get_major_bh_loop(const CoreMaterial& coreMaterial, double temperature) {
+    auto parameters = get_hysteresis_parameters(coreMaterial, temperature);
+    const auto& branches = roshen_major_loop_branches(parameters.at("saturationMagneticFieldStrength"),
+                                                      parameters.at("saturationMagneticFluxDensity"), parameters.at("coerciveForce"),
+                                                      parameters.at("remanence"), constants.roshenMagneticFieldStrengthStep);
+    if (branches.fieldStrength.empty()) {
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+            "Roshen major B-H loop: material " + coreMaterial.get_name() + " at " + std::to_string(temperature) +
+            " C has a saturation field strength of " + std::to_string(parameters.at("saturationMagneticFieldStrength")) +
+            " A/m, which leaves the loop no field strength grid");
+    }
+    RoshenMajorBhLoop loop;
+    loop.magneticFieldStrength = branches.fieldStrength;
+    loop.upperMagneticFluxDensity = branches.upper;
+    loop.lowerMagneticFluxDensity = branches.lower;
+    return loop;
 }
 
 RoshenDcBiasPoint CoreLossesRoshenModel::get_dc_bias_point(const CoreMaterial& coreMaterial, double temperature,
