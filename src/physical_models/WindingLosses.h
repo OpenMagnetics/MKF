@@ -84,6 +84,10 @@ class WindingLosses
         static double get_total_winding_losses(std::vector<WindingLossesPerElement> windingLossesPerElement);
         static double get_total_winding_losses(WindingLossesPerElement windingLossesThisElement);
         static double calculate_effective_resistance_of_winding(Magnetic magnetic, size_t windingIndex, double frequency, double temperature);
+        // The effective resistance of every winding at once: calculate_effective_resistance_of_winding drives all windings
+        // with the same unit currents whichever winding it reports, so one loss solve answers for each of them. Entry k is
+        // exactly calculate_effective_resistance_of_winding(magnetic, k, frequency, temperature).
+        static std::vector<double> calculate_effective_resistance_of_windings(Magnetic magnetic, double frequency, double temperature);
         ScalarMatrixAtFrequency calculate_resistance_matrix(Magnetic magnetic, double temperature, double frequency);
         static double calculate_losses_per_meter(Wire wire, SignalDescriptor current, double temperature);
         static double calculate_effective_resistance_per_meter(const Wire& wire, double effectiveFrequency, double temperature);

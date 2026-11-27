@@ -361,9 +361,9 @@ std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_windin
     auto coil = magnetic.get_coil();
 
     std::vector<std::vector<double>> acResistanceCoefficientsPerWinding;
+    auto windingAcResistanceCurves = Sweeper::sweep_winding_resistances_over_frequency(magnetic, startingFrequency, endingFrequency, numberElements, temperature);
     for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
-        Curve2D windingAcResistanceData = Sweeper().sweep_winding_resistance_over_frequency(
-            magnetic, startingFrequency, endingFrequency, numberElements, windingIndex, temperature);
+        const Curve2D& windingAcResistanceData = windingAcResistanceCurves[windingIndex];
         auto frequenciesVector = windingAcResistanceData.get_x_points();
         auto valuePoints = windingAcResistanceData.get_y_points();
 
@@ -529,8 +529,9 @@ std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_windin
     auto coil = magnetic.get_coil();
 
     std::vector<std::vector<double>> acResistanceCoefficientsPerWinding;
+    auto windingAcResistanceCurves = Sweeper::sweep_winding_resistances_over_frequency(magnetic, startingFrequency, endingFrequency, numberElements, temperature);
     for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
-        Curve2D windingAcResistanceData = Sweeper().sweep_winding_resistance_over_frequency(magnetic, startingFrequency, endingFrequency, numberElements, windingIndex, temperature);
+        const Curve2D& windingAcResistanceData = windingAcResistanceCurves[windingIndex];
         auto frequenciesVector = windingAcResistanceData.get_x_points();
 
         auto valuePoints = windingAcResistanceData.get_y_points();
@@ -822,8 +823,9 @@ std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_windin
     auto coil = magnetic.get_coil();
 
     std::vector<std::vector<double>> acResistanceCoefficientsPerWinding;
+    auto windingAcResistanceCurves = Sweeper::sweep_winding_resistances_over_frequency(magnetic, startingFrequency, endingFrequency, numberElements, temperature);
     for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
-        Curve2D windingAcResistanceData = Sweeper().sweep_winding_resistance_over_frequency(magnetic, startingFrequency, endingFrequency, numberElements, windingIndex, temperature);
+        const Curve2D& windingAcResistanceData = windingAcResistanceCurves[windingIndex];
         auto frequenciesVector = windingAcResistanceData.get_x_points();
 
         auto points = windingAcResistanceData.get_y_points();
@@ -944,9 +946,9 @@ std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_windin
     auto coil = magnetic.get_coil();
 
     std::vector<std::vector<double>> acResistanceCoefficientsPerWinding;
+    auto windingAcResistanceCurves = Sweeper::sweep_winding_resistances_over_frequency(magnetic, startingFrequency, endingFrequency, numberElements, temperature);
     for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
-        Curve2D windingAcResistanceData = Sweeper().sweep_winding_resistance_over_frequency(
-            magnetic, startingFrequency, endingFrequency, numberElements, windingIndex, temperature);
+        const Curve2D& windingAcResistanceData = windingAcResistanceCurves[windingIndex];
         auto frequenciesVector = windingAcResistanceData.get_x_points();
         auto valuePoints = windingAcResistanceData.get_y_points();
 

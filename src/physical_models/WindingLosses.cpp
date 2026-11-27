@@ -199,7 +199,10 @@ WindingLossesOutput WindingLosses::combine_turn_losses(WindingLossesOutput windi
     return windingLossesOutput;
 }
 
-double WindingLosses::calculate_effective_resistance_of_winding(Magnetic magnetic, size_t windingIndex, double frequency, double temperature) {
+namespace {
+// The operating point calculate_effective_resistance_of_winding drives: 1 A rms in the first winding and the turns-ratio
+// scaled currents in the others, sinusoidal. It does not depend on which winding is reported.
+OperatingPoint effective_resistance_operating_point(Magnetic& magnetic, double frequency, double temperature) {
     auto magnetizingInductanceModel = MagnetizingInductance();
     auto turnsRatios = magnetic.get_mutable_coil().get_turns_ratios();
     auto magnetizingInductance = resolve_dimensional_values(magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil()).get_magnetizing_inductance());
@@ -209,8 +212,11 @@ double WindingLosses::calculate_effective_resistance_of_winding(Magnetic magneti
         currentMask.push_back(virtualCurrentRms * sqrt(2) * turnsRatio);
     }
 
-    auto operatingPoint = Inputs::create_operating_point_with_sinusoidal_current_mask(frequency, magnetizingInductance, temperature, turnsRatios, currentMask);
-    auto windingLossesPerWinding =  WindingLosses().calculate_losses(magnetic, operatingPoint, temperature).get_winding_losses_per_winding().value();
+    return Inputs::create_operating_point_with_sinusoidal_current_mask(frequency, magnetizingInductance, temperature, turnsRatios, currentMask);
+}
+
+double effective_resistance_from_losses(const OperatingPoint& operatingPoint, const WindingLossesOutput& windingLossesOutput, size_t windingIndex) {
+    auto windingLossesPerWinding = windingLossesOutput.get_winding_losses_per_winding().value();
 
     auto proximityLossesPerharmonic = windingLossesPerWinding[windingIndex].get_proximity_effect_losses()->get_losses_per_harmonic();
     double proximityLosses = std::accumulate(proximityLossesPerharmonic.begin(), proximityLossesPerharmonic.end(), 0.0);
@@ -221,6 +227,23 @@ double WindingLosses::calculate_effective_resistance_of_winding(Magnetic magneti
     double effectiveResistance = lossesThisWinding / pow(operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_processed()->get_rms().value(), 2);
 
     return effectiveResistance;
+}
+}  // namespace
+
+double WindingLosses::calculate_effective_resistance_of_winding(Magnetic magnetic, size_t windingIndex, double frequency, double temperature) {
+    auto operatingPoint = effective_resistance_operating_point(magnetic, frequency, temperature);
+    auto windingLossesOutput = WindingLosses().calculate_losses(magnetic, operatingPoint, temperature);
+    return effective_resistance_from_losses(operatingPoint, windingLossesOutput, windingIndex);
+}
+
+std::vector<double> WindingLosses::calculate_effective_resistance_of_windings(Magnetic magnetic, double frequency, double temperature) {
+    auto operatingPoint = effective_resistance_operating_point(magnetic, frequency, temperature);
+    auto windingLossesOutput = WindingLosses().calculate_losses(magnetic, operatingPoint, temperature);
+    std::vector<double> effectiveResistances;
+    for (size_t windingIndex = 0; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {
+        effectiveResistances.push_back(effective_resistance_from_losses(operatingPoint, windingLossesOutput, windingIndex));
+    }
+    return effectiveResistances;
 }
 
 

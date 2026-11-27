@@ -372,6 +372,37 @@ Curve2D Sweeper::sweep_winding_resistance_over_frequency(Magnetic magnetic, doub
     return Curve2D(frequencies, effectiveResistances, title);
 }
 
+std::vector<Curve2D> Sweeper::sweep_winding_resistances_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, double temperature, std::string mode, std::string title) {
+    std::vector<double> frequencies;
+    if (mode == "linear") {
+        frequencies = linear_spaced_array(start, stop, numberElements);
+    }
+    else if (mode == "log") {
+        frequencies = logarithmic_spaced_array(start, stop, numberElements);
+    }
+    else {
+        throw ModelNotAvailableException("Unknown spaced array mode");
+    }
+
+    const size_t numberWindings = magnetic.get_coil().get_functional_description().size();
+    std::vector<Curve2D> curves;
+    if (numberWindings == 0) {
+        return curves;  // one curve per winding: none, and no solve, as the per-winding sweep would run for none
+    }
+    std::vector<std::vector<double>> effectiveResistancesPerWinding(numberWindings);
+    for (auto frequency : frequencies) {
+        auto effectiveResistances = WindingLosses::calculate_effective_resistance_of_windings(magnetic, frequency, temperature);
+        for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+            effectiveResistancesPerWinding[windingIndex].push_back(effectiveResistances[windingIndex]);
+        }
+    }
+
+    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+        curves.push_back(Curve2D(frequencies, effectiveResistancesPerWinding[windingIndex], title));
+    }
+    return curves;
+}
+
 Curve2D Sweeper::sweep_resistance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, double temperature, std::string mode, std::string title) {
     std::vector<double> frequencies;
     if (mode == "linear") {

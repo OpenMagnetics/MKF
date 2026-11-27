@@ -352,6 +352,50 @@ namespace {
         settings.reset();
     }
 
+    // ABT #2582: the subcircuit export's AC-resistance fits sweep every winding with ONE loss solve per frequency
+    // (sweep_winding_resistances_over_frequency). Each curve must hold exactly the bits the per-winding sweep gives.
+    TEST_CASE("Test_Sweeper_Winding_Resistances_Over_Frequency_Match_Each_Winding_Sweep", "[processor][sweeper]") {
+        std::vector<int64_t> numberTurns = {80, 8, 6};
+        std::vector<int64_t> numberParallels = {1, 2, 6};
+        std::string shapeName = "ER 28";
+        uint8_t interleavingLevel = 1;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::SPREAD;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
+
+        std::vector<OpenMagnetics::Wire> wires;
+        wires.push_back(find_wire_by_name("Round 0.25 - FIW 6"));
+        wires.push_back(find_wire_by_name("Round T21A01TXXX-1"));
+        wires.push_back(find_wire_by_name("Round 0.25 - FIW 6"));
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName, interleavingLevel, windingOrientation,
+                                                         layersOrientation, turnsAlignment, sectionsAlignment, wires, true);
+        coil.wind({0, 1, 2}, 1);
+
+        auto gapping = OpenMagneticsTesting::get_ground_gap(0.0000008);
+        auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, 1, "3C95");
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        const double start = 0.1;
+        const double stop = 1000000;
+        const size_t numberElements = 6;
+        const double temperature = 25;
+        auto curves = Sweeper::sweep_winding_resistances_over_frequency(magnetic, start, stop, numberElements, temperature);
+        REQUIRE(curves.size() == 3);
+        for (size_t windingIndex = 0; windingIndex < curves.size(); ++windingIndex) {
+            auto expected = Sweeper::sweep_winding_resistance_over_frequency(magnetic, start, stop, numberElements, windingIndex, temperature);
+            REQUIRE(curves[windingIndex].get_x_points() == expected.get_x_points());
+            REQUIRE(curves[windingIndex].get_y_points() == expected.get_y_points());
+            REQUIRE(curves[windingIndex].get_title() == expected.get_title());
+        }
+        // The windings differ, so a curve answering for another winding cannot pass.
+        REQUIRE(curves[0].get_y_points() != curves[1].get_y_points());
+        REQUIRE(curves[1].get_y_points() != curves[2].get_y_points());
+    }
+
     TEST_CASE("Test_Sweeper_Magnetizing_Inductance_Over_Frequency_Many_Turns", "[processor][sweeper][smoke-test]") {
         std::vector<int64_t> numberTurns = {80, 8, 6};
         std::vector<int64_t> numberParallels = {1, 2, 6};
