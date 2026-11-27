@@ -2882,6 +2882,12 @@ double CoreLossesAlbachModel::compute_core_volumetric_losses(const CoreMaterial&
     double magneticFluxDensityPeakToPeak = Inputs::get_magnetic_flux_density_peak_to_peak(excitation, frequency);
     double magneticFluxDensityAcPeak = Inputs::get_magnetic_flux_density_peak(excitation, frequency) - magneticFluxDensity.get_processed().value().get_offset();
     magneticFluxDensityAcPeak = std::fabs(magneticFluxDensityAcPeak);
+    if (magneticFluxDensityPeakToPeak == 0) {
+        // No AC swing: the flux density never moves, so nothing remagnetises the core. The loss is the limit
+        // DeltaB -> 0 of a law in DeltaB^beta, zero, as every other model returns; the equivalent frequency itself
+        // (normalised by DeltaB^2) is 0 / 0 there.
+        return 0;
+    }
 
     magneticFluxDensity = Inputs::standardize_waveform(magneticFluxDensity, frequency);
     auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value().get_data();
@@ -3002,6 +3008,12 @@ double CoreLossesMSEModel::compute_core_volumetric_losses(const CoreMaterial& co
     double magneticFluxDensityAcPeak = Inputs::get_magnetic_flux_density_peak(excitation, frequency) -
                                        magneticFluxDensity.get_processed().value().get_offset();
     magneticFluxDensityAcPeak = std::fabs(magneticFluxDensityAcPeak);
+    if (magneticFluxDensityPeakToPeak == 0) {
+        // No AC swing: the flux density never moves, so nothing remagnetises the core. The loss is the limit
+        // DeltaB -> 0 of a law in DeltaB^beta, zero, as every other model returns; the equivalent frequency itself
+        // (normalised by DeltaB^2) is 0 / 0 there.
+        return 0;
+    }
 
 
     auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value().get_data();

@@ -2063,6 +2063,34 @@ TEST_CASE("Core losses of a flux waveform with zero-length segments", "[physical
     settings.reset();
 }
 
+// A DC-only operating point (a flat 33 A in a user's EQ 41/28/19.9, with a zero-amplitude switching harmonic): the flux
+// density never moves, so no model may price a loss. MSE and Albach normalised their equivalent frequency by the swing
+// squared, 0 / 0, and returned NaN where the others return 0.
+TEST_CASE("Core losses of a flux density with no AC swing", "[physical-model][core-losses][smoke-test]") {
+    settings.reset();
+    clear_databases();
+    Core core = OpenMagneticsTesting::get_quick_core("PQ 20/20", json::array(), 1, "3C95");
+    const double frequency = 100000, temperature = 25, dc = 0.1;
+    json excitationJson;
+    excitationJson["frequency"] = frequency;
+    excitationJson["magneticFluxDensity"]["waveform"]["time"] = {0, 1 / frequency};
+    excitationJson["magneticFluxDensity"]["waveform"]["data"] = {dc, dc};
+    excitationJson["magneticFluxDensity"]["processed"]["label"] = WaveformLabel::CUSTOM;
+    excitationJson["magneticFluxDensity"]["processed"]["offset"] = dc;
+    excitationJson["magneticFluxDensity"]["processed"]["peak"] = dc;
+    excitationJson["magneticFluxDensity"]["processed"]["peakToPeak"] = 0;
+    excitationJson["magneticFluxDensity"]["processed"]["dutyCycle"] = 0.5;
+    OperatingPointExcitation excitation(excitationJson);
+    for (auto modelName : {CoreLossesModels::STEINMETZ, CoreLossesModels::IGSE, CoreLossesModels::MSE, CoreLossesModels::ALBACH,
+                           CoreLossesModels::NSE, CoreLossesModels::BARG, CoreLossesModels::ROSHEN}) {
+        INFO("Model: " << magic_enum::enum_name(modelName));
+        auto model = CoreLossesModel::factory(modelName);
+        double losses = model->get_core_losses(core, excitation, temperature).get_core_losses();
+        CHECK(losses == 0);
+    }
+    settings.reset();
+}
+
 TEST_CASE("Voltage_And_Current", "[physical-model][core-losses][smoke-test]") {
     auto models = json::parse("{\"coreLosses\": \"IGSE\", \"gapReluctance\": \"BALAKRISHNAN\"}");
     auto core = Core(json::parse(
