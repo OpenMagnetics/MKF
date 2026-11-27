@@ -4247,3 +4247,44 @@ TEST_CASE("Test_Results_Past_A_Models_Range_Name_The_Limit_Not_The_Value", "[sim
     }
     settings.reset();
 }
+
+// ABT #2581: the winding studio re-flows a custom section rectangle with rewind_layers_and_turns. With both
+// sections in window 0 of a three-window E 42 (nothing to mirror or reflect), the inverse window pass returned
+// early and left the coil marked as placed, so the forward pass after the re-flow returned too: no turn got its
+// second crossing, and the multi-window field then threw MMF_BOUNDARY (no Primary conductor in the left window,
+// where the reluctance network returns its 24 A-turns). The fixture is the web's own call (WS-8).
+TEST_CASE("Test_Rewind_With_Every_Section_In_The_Main_Window_Keeps_Second_Crossings", "[simulator][multi-column][smoke-test]") {
+    settings.reset();
+    std::ifstream fixtureFile(OpenMagneticsTesting::get_test_data_dir(std::source_location::current()) /
+                              "multicolumn_e42_rewind_both_sections_in_window_0.json");
+    REQUIRE(fixtureFile.good());
+    json fixture = json::parse(fixtureFile);
+    // As WebLibMKF's wind_layers_and_turns_with_columns.
+    settings.set_coil_wind_even_if_not_fit(true);
+    settings.set_coil_include_additional_coordinates(true);
+    OpenMagnetics::Coil coil;
+    coil.set_bobbin_from_json(fixture["coil"]["bobbin"]);
+    coil.set_functional_description(std::vector<OpenMagnetics::Winding>(fixture["coil"]["functionalDescription"]));
+    coil.set_sections_description(std::vector<Section>(fixture["coil"]["sectionsDescription"]));
+    coil.set_groups_description(std::vector<Group>(fixture["coil"]["groupsDescription"]));
+    coil.set_group_window_sides_applied(true);
+    coil.set_core_columns(std::vector<ColumnElement>(fixture["coreColumns"]));
+    const auto sections = coil.get_sections_description().value();
+    for (const auto& section : sections) {
+        REQUIRE(section.get_winding_window().value_or(0) == 0);
+    }
+    REQUIRE(coil.rewind_layers_and_turns());
+    const auto turns = coil.get_turns_description().value();
+    REQUIRE(turns.size() == 36);
+    for (const auto& turn : turns) {
+        INFO(turn.get_name());
+        REQUIRE(turn.get_additional_coordinates());
+        // The second crossing: across the central column's axis (x = 0).
+        CHECK_THAT(turn.get_additional_coordinates().value()[0][0], Catch::Matchers::WithinAbs(-turn.get_coordinates()[0], 1e-12));
+        CHECK(turn.get_additional_coordinates().value()[0][1] == turn.get_coordinates()[1]);
+    }
+
+    // The captured studio layout then widens the primary to two layers in place over the secondary, so the
+    // core-loss step stops on overlapping crossings; that layout is the web's input, not this test's subject.
+    settings.reset();
+}

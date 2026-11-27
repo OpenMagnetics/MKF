@@ -21890,6 +21890,13 @@ void Coil::apply_group_window_sides(bool inverse) {
 
     bool emitBothCrossings = wantsBothCrossings;
     if (!anyTransform && !emitBothCrossings) {
+        // Nothing to move. An inverse pass still leaves the coil in the winding frame: clear the flag, or the
+        // forward pass after a re-flow returns early and every turn loses its second crossing (ABT #2581: both
+        // sections in window 0 of a multi-column E core, rewound by the winding studio). A forward pass that moved
+        // nothing leaves the flag as it was, so its consumers keep reading unplaced coordinates.
+        if (inverse) {
+            _groupWindowSidesApplied = false;
+        }
         return;
     }
 
