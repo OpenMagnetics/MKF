@@ -1366,3 +1366,53 @@ TEST_CASE("Test_Complex_Permeability_Formula_Material_Reaches_Low_Frequency", "[
     CHECK(tableMinimum > 1.0);
     settings.reset();
 }
+
+// ABT #2593 (Alf, 2026-11-27): a powder whose maker publishes no mu(f) (TMSC 26, TDG, FeSiAl) gets its complex
+// permeability as the median of the powders of its composition and initial permeability that have one, each scaled
+// to its own mu_i: a class estimate, never one vendor's grade. Without it the impedance graph refused the part.
+TEST_CASE("Test_Complex_Permeability_Of_A_Powder_Without_Frequency_Data_Is_Its_Class_Median", "[physical-model][impedance][smoke-test]") {
+    settings.reset();
+    auto material = Core::resolve_material(std::string("TMSC 26"));
+    REQUIRE(!InitialPermeability::has_frequency_dependency(material));
+    REQUIRE(!material.get_permeability().get_complex());
+
+    auto donors = ComplexPermeability::find_powder_permeability_donors(material);
+    REQUIRE(donors.size() >= 3);
+    bool hasKoolMu = false;
+    for (const auto& donor : donors) {
+        CHECK(donor.get_material_composition() == material.get_material_composition());
+        CHECK(InitialPermeability::has_frequency_dependency(donor));
+        hasKoolMu = hasKoolMu || donor.get_name() == "Kool Mµ 26";
+    }
+    CHECK(hasKoolMu);
+
+    ComplexPermeability complexPermeabilityModel;
+    const double initialPermeability = InitialPermeability::get_initial_permeability(material);
+    for (double frequency : {1e4, 1e5, 1e6}) {
+        INFO(frequency << " Hz");
+        auto [real, imaginary] = complexPermeabilityModel.get_complex_permeability(material, frequency);
+        // The median of the scaled donors' own values (each read from its own table).
+        std::vector<double> reals, imaginaries;
+        for (const auto& donor : donors) {
+            double ratio = initialPermeability / InitialPermeability::get_initial_permeability(donor);
+            auto [donorReal, donorImaginary] = complexPermeabilityModel.get_complex_permeability(donor, frequency);
+            reals.push_back(donorReal * ratio);
+            imaginaries.push_back(donorImaginary * ratio);
+        }
+        std::sort(reals.begin(), reals.end());
+        std::sort(imaginaries.begin(), imaginaries.end());
+        CHECK(real >= reals.front());
+        CHECK(real <= reals.back());
+        CHECK(imaginary >= imaginaries.front());
+        CHECK(imaginary <= imaginaries.back());
+        CHECK(real > 0);
+        CHECK(imaginary > 0);
+    }
+
+    // The customer's toroid now has an impedance.
+    auto magnetic = OpenMagneticsTesting::get_quick_magnetic("T 120/70/40", json::parse("[]"), {38}, 1, "TMSC 26");
+    auto impedance = Impedance().calculate_impedance(magnetic, 1e5);
+    CHECK(std::isfinite(std::abs(impedance)));
+    CHECK(std::abs(impedance) > 0);
+    settings.reset();
+}

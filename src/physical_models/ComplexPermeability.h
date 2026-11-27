@@ -54,6 +54,12 @@ class ComplexPermeability {
         // Builds (once per material content) the real and imaginary interpolators and their spans,
         // and returns the key they are cached under (cache_key).
         std::string ensure_interpolators(const CoreMaterial& coreMaterial);
+    public:
+        // A powder without mu(f) (ABT #2593): the powders of its class it borrows from, and their median complex
+        // permeability scaled to its own initial permeability.
+        static std::vector<CoreMaterial> find_powder_permeability_donors(const CoreMaterial& coreMaterial);
+        ComplexPermeabilityData calculate_complex_permeability_from_powder_donors(const CoreMaterial& coreMaterial, const std::vector<CoreMaterial>& donors);
+    private:
         // ABT #710: the caches are keyed by the material's name AND its permeability data. Keyed by
         // the name alone, an inline material that shared a name with one evaluated before (a database
         // record, or an edited copy) silently got the earlier material's curves.

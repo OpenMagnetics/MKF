@@ -329,6 +329,131 @@ std::string ComplexPermeability::cache_key(const CoreMaterial& coreMaterial) {
     return coreMaterial.get_name() + "#" + std::to_string(seed);
 }
 
+// A powder without mu(f) borrows its class's (Alf, 2026-11-27, ABT #2593: TMSC 26, a TDG powder whose maker publishes
+// no mu(f)). The donors are the powders of the same composition with a frequency-dependent initial permeability and
+// the nearest mu_i (in log); all of them when several tie. Nothing else is borrowed.
+std::vector<CoreMaterial> ComplexPermeability::find_powder_permeability_donors(const CoreMaterial& coreMaterial) {
+    const auto composition = coreMaterial.get_material_composition();
+    if (coreMaterial.get_material() != MaterialType::POWDER || !composition) {
+        return {};
+    }
+    if (coreMaterialDatabase.empty()) {
+        load_core_materials();
+    }
+    const double initialPermeability = InitialPermeability::get_initial_permeability(coreMaterial);
+    std::vector<std::pair<double, CoreMaterial>> candidates;
+    for (const auto& [name, candidate] : coreMaterialDatabase) {
+        if (name == coreMaterial.get_name() || candidate.get_material() != MaterialType::POWDER ||
+            candidate.get_material_composition() != composition || candidate.get_permeability().get_complex() ||
+            !InitialPermeability::has_frequency_dependency(candidate)) {
+            continue;
+        }
+        candidates.emplace_back(std::fabs(std::log(InitialPermeability::get_initial_permeability(candidate) / initialPermeability)), candidate);
+    }
+    if (candidates.empty()) {
+        return {};
+    }
+    double nearest = std::numeric_limits<double>::max();
+    for (const auto& candidate : candidates) {
+        nearest = std::min(nearest, candidate.first);
+    }
+    std::vector<CoreMaterial> donors;
+    for (const auto& [distance, candidate] : candidates) {
+        if (distance <= nearest + 1e-9) {
+            donors.push_back(candidate);
+        }
+    }
+    return donors;
+}
+
+// The donors' complex permeabilities (each derived from its own mu(f), as for any powder with one, and scaled by the
+// target's mu_i over the donor's), and at every frequency their median: a class estimate, not one vendor's grade. The
+// table spans the frequencies every donor's covers, about ten points per decade.
+ComplexPermeabilityData ComplexPermeability::calculate_complex_permeability_from_powder_donors(const CoreMaterial& coreMaterial,
+                                                                                              const std::vector<CoreMaterial>& donors) {
+    if (donors.empty()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Complex permeability of " + coreMaterial.get_name() + ": no donor to estimate it from");
+    }
+    const double initialPermeability = InitialPermeability::get_initial_permeability(coreMaterial);
+    struct Table {
+        std::vector<double> logFrequency;
+        std::vector<double> value;
+    };
+    auto tableOf = [&](const auto& part, double ratio) {
+        auto points = std::get<std::vector<PermeabilityPoint>>(part);
+        std::sort(points.begin(), points.end(), [](const PermeabilityPoint& left, const PermeabilityPoint& right) {
+            return left.get_frequency().value() < right.get_frequency().value();
+        });
+        Table table;
+        for (const auto& point : points) {
+            double logFrequency = std::log(point.get_frequency().value());
+            if (table.logFrequency.empty() || logFrequency > table.logFrequency.back()) {
+                table.logFrequency.push_back(logFrequency);
+                table.value.push_back(point.get_value() * ratio);
+            }
+        }
+        if (table.logFrequency.size() < 2) {
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Complex permeability of " + coreMaterial.get_name() +
+                                       ": a donor's derived table has fewer than 2 points");
+        }
+        return table;
+    };
+    auto valueAt = [](const Table& table, double logFrequency) {
+        size_t upper = std::upper_bound(table.logFrequency.begin(), table.logFrequency.end(), logFrequency) - table.logFrequency.begin();
+        upper = std::clamp<size_t>(upper, 1, table.logFrequency.size() - 1);
+        size_t lower = upper - 1;
+        double fraction = (logFrequency - table.logFrequency[lower]) / (table.logFrequency[upper] - table.logFrequency[lower]);
+        return table.value[lower] + fraction * (table.value[upper] - table.value[lower]);
+    };
+    std::vector<Table> realTables, imaginaryTables;
+    double lowest = std::numeric_limits<double>::lowest(), highest = std::numeric_limits<double>::max();
+    std::string donorNames;
+    for (const auto& donor : donors) {
+        const double ratio = initialPermeability / InitialPermeability::get_initial_permeability(donor);
+        auto data = calculate_complex_permeability_from_frequency_dependent_initial_permeability(donor);
+        realTables.push_back(tableOf(data.get_real(), ratio));
+        imaginaryTables.push_back(tableOf(data.get_imaginary(), ratio));
+        for (const auto* table : {&realTables.back(), &imaginaryTables.back()}) {
+            lowest = std::max(lowest, table->logFrequency.front());
+            highest = std::min(highest, table->logFrequency.back());
+        }
+        donorNames += (donorNames.empty() ? "" : ", ") + donor.get_name();
+    }
+    if (!(highest > lowest)) {
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Complex permeability of " + coreMaterial.get_name() +
+                                   ": its donors (" + donorNames + ") share no frequency range");
+    }
+    const size_t numberPoints = std::max<size_t>(2, static_cast<size_t>(std::ceil((highest - lowest) / std::log(10.0) * 10)) + 1);
+    auto median = [](std::vector<double> values) {
+        std::sort(values.begin(), values.end());
+        size_t middle = values.size() / 2;
+        return values.size() % 2 == 1 ? values[middle] : (values[middle - 1] + values[middle]) / 2;
+    };
+    std::vector<PermeabilityPoint> realPoints, imaginaryPoints;
+    for (size_t index = 0; index < numberPoints; ++index) {
+        double logFrequency = lowest + (highest - lowest) * static_cast<double>(index) / static_cast<double>(numberPoints - 1);
+        std::vector<double> reals, imaginaries;
+        for (size_t donorIndex = 0; donorIndex < donors.size(); ++donorIndex) {
+            reals.push_back(valueAt(realTables[donorIndex], logFrequency));
+            imaginaries.push_back(valueAt(imaginaryTables[donorIndex], logFrequency));
+        }
+        PermeabilityPoint real, imaginary;
+        real.set_frequency(std::exp(logFrequency));
+        real.set_value(median(reals));
+        imaginary.set_frequency(std::exp(logFrequency));
+        imaginary.set_value(median(imaginaries));
+        realPoints.push_back(real);
+        imaginaryPoints.push_back(imaginary);
+    }
+    ComplexPermeabilityData result;
+    result.set_real(realPoints);
+    result.set_imaginary(imaginaryPoints);
+    OM_WARNING_M("ComplexPermeability", coreMaterial.get_name() + " has no frequency-dependent permeability: its complex permeability is "
+                 "estimated as the median of " + std::to_string(donors.size()) + " powders of its composition and initial permeability (" +
+                 donorNames + "), each scaled to its own initial permeability");
+    return result;
+}
+
 std::string ComplexPermeability::ensure_interpolators(const CoreMaterial& coreMaterial) {
     // Cached per material: advisers that scan thousands of cores share only a few materials,
     // and rebuilding the derived curves (calculate_frequency_for_initial_permeability_drop runs
@@ -345,6 +470,9 @@ std::string ComplexPermeability::ensure_interpolators(const CoreMaterial& coreMa
     if (!coreMaterial.get_permeability().get_complex()) {
         if (InitialPermeability::has_frequency_dependency(coreMaterial)) {
             complexPermeabilityData = calculate_complex_permeability_from_frequency_dependent_initial_permeability(coreMaterial);
+        }
+        else if (auto donors = find_powder_permeability_donors(coreMaterial); !donors.empty()) {
+            complexPermeabilityData = calculate_complex_permeability_from_powder_donors(coreMaterial, donors);
         }
         else {
             throw MaterialDataMissingException(materialName, "Complex permeability");
