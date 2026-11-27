@@ -2825,7 +2825,31 @@ double WindingProximityEffectLossesWangStackedModel::outline_integral(double A, 
 
 namespace {
 // One flat conductor in its own (wide, stacking) frame, as the CoilMesher places its width samples.
-struct FlatStackTurn { bool flat; bool wideAlongY; double wide; double thin; double alongWide; double alongStack; };
+// frameAngle: the angle of that frame. A toroid lays its turns radially, so each turn's frame is rotated by the turn's
+// rotation (its polar angle), exactly as CoilMesherWangModel::generate_mesh_induced_turn reads it; elsewhere the frame is
+// the axis-aligned one (angle 0). Only conductors in the same frame are parallel strips that can stack or touch.
+struct FlatStackTurn { bool flat; bool wideAlongY; double wide; double thin; double alongWide; double alongStack; double frameAngle; };
+
+// The frame angle of a turn and its centre expressed in that frame (x along the turn's width, y along its height).
+// Throws for a toroid turn without rotation, as the CoilMesher does.
+struct TurnFrame { double angle; double x; double y; };
+TurnFrame turn_frame(const Turn& turn, bool toroidal) {
+    const auto& coordinates = turn.get_coordinates();
+    if (!toroidal) {
+        return {0, coordinates[0], coordinates[1]};
+    }
+    if (!turn.get_rotation()) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Toroidal cores should have rotation in the turn, even if it is 0");
+    }
+    const double angle = turn.get_rotation().value() / 180 * std::numbers::pi;
+    const double cosine = std::cos(angle);
+    const double sine = std::sin(angle);
+    return {angle, coordinates[0] * cosine + coordinates[1] * sine, -coordinates[0] * sine + coordinates[1] * cosine};
+}
+
+bool same_frame(const FlatStackTurn& a, const FlatStackTurn& b) {
+    return std::abs(a.frameAngle - b.frameAngle) <= 1e-9;
+}
 
 // The stacks of flat conductors: the transitive closure of "same orientation, same wide and thin size, centres within
 // half a width of each other along the wide axis, slit between them (gap along the stacking axis) under half a width".
@@ -2851,7 +2875,7 @@ std::vector<size_t> flat_stack_roots(const std::vector<FlatStackTurn>& flatTurns
         }
         for (size_t j = i + 1; j < numberTurns; ++j) {
             const auto& b = flatTurns[j];
-            if (!b.flat || b.wideAlongY != a.wideAlongY) {
+            if (!b.flat || b.wideAlongY != a.wideAlongY || !same_frame(a, b)) {
                 continue;
             }
             double tolerance = 1e-9 * std::max(a.wide, b.wide);
@@ -2884,10 +2908,11 @@ std::vector<double> WindingProximityEffectLossesWangStackedModel::calculate_perp
     std::vector<double> factors(numberTurns, 1.0);
 
     std::vector<FlatStackTurn> flatTurns(numberTurns);
+    const bool toroidal = coil.resolve_bobbin().get_winding_window_shape() == WindingWindowShape::ROUND;
     for (size_t turnIndex = 0; turnIndex < numberTurns; ++turnIndex) {
         const auto& turn = turns[turnIndex];
         auto wire = coil.resolve_wire(coil.get_winding_index_by_name(turn.get_winding()));
-        FlatStackTurn flatTurn{false, false, 0, 0, 0, 0};
+        FlatStackTurn flatTurn{false, false, 0, 0, 0, 0, 0};
         if (wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::PLANAR || wire.get_type() == WireType::FOIL) {
             flatTurn.flat = true;
             flatTurn.wideAlongY = (wire.get_type() == WireType::FOIL);
@@ -2895,8 +2920,10 @@ std::vector<double> WindingProximityEffectLossesWangStackedModel::calculate_perp
             double height = wire.get_maximum_conducting_height();
             flatTurn.wide = flatTurn.wideAlongY ? height : width;
             flatTurn.thin = flatTurn.wideAlongY ? width : height;
-            flatTurn.alongWide = flatTurn.wideAlongY ? turn.get_coordinates()[1] : turn.get_coordinates()[0];
-            flatTurn.alongStack = flatTurn.wideAlongY ? turn.get_coordinates()[0] : turn.get_coordinates()[1];
+            const auto frame = turn_frame(turn, toroidal);
+            flatTurn.frameAngle = frame.angle;
+            flatTurn.alongWide = flatTurn.wideAlongY ? frame.y : frame.x;
+            flatTurn.alongStack = flatTurn.wideAlongY ? frame.x : frame.y;
         }
         flatTurns[turnIndex] = flatTurn;
     }
@@ -2947,7 +2974,8 @@ std::vector<double> WindingProximityEffectLossesMartinezModel::calculate_stack_s
     const auto turns = coil.get_turns_description().value();
     const size_t numberTurns = turns.size();
     // Each flat turn in its own (wide, normal) frame, as the CoilMesher places its width samples (FOIL wide along y).
-    std::vector<FlatStackTurn> flatTurns(numberTurns, FlatStackTurn{false, false, 0, 0, 0, 0});
+    std::vector<FlatStackTurn> flatTurns(numberTurns, FlatStackTurn{false, false, 0, 0, 0, 0, 0});
+    const bool toroidal = coil.resolve_bobbin().get_winding_window_shape() == WindingWindowShape::ROUND;
     for (size_t turnIndex = 0; turnIndex < numberTurns; ++turnIndex) {
         const auto& turn = turns[turnIndex];
         auto wire = coil.resolve_wire(coil.get_winding_index_by_name(turn.get_winding()));
@@ -2962,7 +2990,7 @@ std::vector<double> WindingProximityEffectLossesMartinezModel::calculate_stack_s
         if (turn.get_coordinates().size() < 2) {
             throw CoilNotProcessedException("Martinez stack sharing: turn " + turn.get_name() + " has no 2D coordinates");
         }
-        FlatStackTurn flatTurn{true, wire.get_type() == WireType::FOIL, 0, 0, 0, 0};
+        FlatStackTurn flatTurn{true, wire.get_type() == WireType::FOIL, 0, 0, 0, 0, 0};
         const double width = wire.get_maximum_conducting_width();
         const double height = wire.get_maximum_conducting_height();
         flatTurn.wide = flatTurn.wideAlongY ? height : width;
@@ -2970,8 +2998,10 @@ std::vector<double> WindingProximityEffectLossesMartinezModel::calculate_stack_s
         if (!(flatTurn.wide > 0) || !(flatTurn.thin > 0)) {
             throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Martinez stack sharing: the wire of turn " + turn.get_name() + " has a zero conducting dimension");
         }
-        flatTurn.alongWide = flatTurn.wideAlongY ? turn.get_coordinates()[1] : turn.get_coordinates()[0];
-        flatTurn.alongStack = flatTurn.wideAlongY ? turn.get_coordinates()[0] : turn.get_coordinates()[1];
+        const auto frame = turn_frame(turn, toroidal);
+        flatTurn.frameAngle = frame.angle;
+        flatTurn.alongWide = flatTurn.wideAlongY ? frame.y : frame.x;
+        flatTurn.alongStack = flatTurn.wideAlongY ? frame.x : frame.y;
         flatTurns[turnIndex] = flatTurn;
     }
 
@@ -2990,7 +3020,9 @@ std::vector<double> WindingProximityEffectLossesMartinezModel::calculate_stack_s
         double coupled = induced.thin * induced.wide;  // the self term, t_k G_kk = t_k W_k
         for (size_t j = 0; j < numberTurns; ++j) {
             const auto& inducing = flatTurns[j];
-            if (j == k || !inducing.flat || inducing.wideAlongY != induced.wideAlongY) {
+            // Strips in different frames (two toroid turns at different polar angles) are not parallel: they neither
+            // stack nor overlap in this model.
+            if (j == k || !inducing.flat || inducing.wideAlongY != induced.wideAlongY || !same_frame(inducing, induced)) {
                 continue;
             }
             const double s = inducing.alongWide - induced.alongWide;

@@ -1075,6 +1075,85 @@ namespace TestWindingLossesToroidalCores {
             MagneticFieldStrengthModels::ALBACH, MagneticFieldStrengthFringingEffectModels::ALBACH);
     }
 
+    TEST_CASE("Test_Winding_Losses_Martinez_Stack_Sharing_Toroid_Turns_In_Their_Own_Frame", "[physical-model][winding-losses][rectangular][round-winding-window][smoke-test]") {
+        // A user's T 102/57/16.5 with 32 turns of 6 x 3 mm rectangular wire (2026-11-27) refused every loss with
+        // "Martinez stack sharing: flat turns ... turn 24 and ... turn 23 overlap". The stack sharing read every flat
+        // turn in the global x/y frame, but a toroid lays its turns radially (the CoilMesher reads each one in the frame
+        // of its rotation). The two turns either side of the bottom of the ring sit at the same y, 5 mm apart in x,
+        // with a 6 mm wide side along x in the global frame: "overlap". In their own frames they are two radial bars at
+        // different angles, 4.4 mm of arc apart at the bore for a 3 mm thickness.
+        std::vector<int64_t> numberTurns({32});
+        std::vector<int64_t> numberParallels({1});
+        std::string shapeName = "T 102/57/16.5";
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
+        wire.set_nominal_value_conducting_width(0.006);
+        wire.set_nominal_value_conducting_height(0.003);
+        wire.set_nominal_value_outer_width(0.006085);
+        wire.set_nominal_value_outer_height(0.003085);
+        wire.set_number_conductors(1);
+        wire.set_material("copper");
+        wire.set_type(WireType::RECTANGULAR);
+        wires.push_back(wire);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName, 1,
+            WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING, CoilAlignment::CENTERED, CoilAlignment::CENTERED, wires);
+        auto gapping = json::array();
+        auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, 1, "3C97");
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        // Laid round the whole ring as the user's design is: 32 radial bars 11.25 deg apart, the first at 5.625 deg,
+        // so turns 23 and 24 straddle the bottom of the ring at the same y.
+        {
+            auto coilToPlace = magnetic.get_coil();
+            auto placedTurns = coilToPlace.get_turns_description().value();
+            const double radius = std::hypot(placedTurns[0].get_coordinates()[0], placedTurns[0].get_coordinates()[1]);
+            REQUIRE(placedTurns[0].get_additional_coordinates());
+            const auto outerCrossing = placedTurns[0].get_additional_coordinates().value()[0];
+            const double outerRadius = std::hypot(outerCrossing[0], outerCrossing[1]);
+            for (size_t turnIndex = 0; turnIndex < placedTurns.size(); ++turnIndex) {
+                const double angle = 5.625 + 11.25 * static_cast<double>(turnIndex);
+                const double radians = angle / 180 * std::numbers::pi;
+                placedTurns[turnIndex].set_coordinates(std::vector<double>{radius * std::cos(radians), radius * std::sin(radians)});
+                placedTurns[turnIndex].set_rotation(angle);
+                placedTurns[turnIndex].set_additional_coordinates(std::vector<std::vector<double>>{{outerRadius * std::cos(radians), outerRadius * std::sin(radians)}});
+            }
+            coilToPlace.set_turns_description(placedTurns);
+            magnetic.set_coil(coilToPlace);
+        }
+
+        // The premise: two turns at the same y whose global-frame x distance is under the wire's width.
+        const auto turns = magnetic.get_coil().get_turns_description().value();
+        bool premise = false;
+        for (size_t i = 0; i < turns.size(); ++i) {
+            for (size_t j = i + 1; j < turns.size(); ++j) {
+                if (std::abs(turns[i].get_coordinates()[1] - turns[j].get_coordinates()[1]) < 1e-9 &&
+                    std::abs(turns[i].get_coordinates()[0] - turns[j].get_coordinates()[0]) < 0.006) {
+                    premise = true;
+                }
+            }
+        }
+        REQUIRE(premise);
+
+        auto sharingNumbers = WindingProximityEffectLossesMartinezModel::calculate_stack_sharing_numbers(magnetic.get_coil());
+        REQUIRE(sharingNumbers.size() == turns.size());
+        for (auto sharingNumber : sharingNumbers) {
+            CHECK(std::isfinite(sharingNumber));
+            CHECK(sharingNumber > 0);
+        }
+
+        settings.reset();
+        clear_databases();
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(100000, 1e-3, 20, WaveformLabel::SINUSOIDAL, 2, 0.5, 0);
+        WindingLossesModels models;
+        models.modelSet = WindingLossesModelSets::TOROID;
+        auto losses = WindingLosses(models).calculate_losses(magnetic, inputs.get_operating_point(0), 20);
+        CHECK(std::isfinite(losses.get_winding_losses()));
+        CHECK(losses.get_winding_losses() > 0);
+        settings.reset();
+    }
+
     TEST_CASE("Test_Winding_Losses_Ten_Turn_Round_Sinusoidal_Toroidal_Core_Rectangular_Wire", "[physical-model][winding-losses][rectangular][round-winding-window]") {
         // ABT #832 (2026-08-20): the historical watt pins (2.18 @25k) sat 3x BELOW FEM (they were green only against the
         // c*h prefactor bug that zeroed rectangular proximity).
