@@ -15,6 +15,7 @@
 #include <execution>
 #include <magic_enum_utility.hpp>
 #include <list>
+#include <set>
 #include <cmrc/cmrc.hpp>
 #include "support/Exceptions.h"
 #include "support/Logger.h"
@@ -526,11 +527,47 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::get_cr
         load_core_materials();
     }
 
+    // Records that differ only in who sells them and what they are called (same physics in every field the
+    // material carries) are one material: they score identically, so each copy would take a shortlist place
+    // from a genuinely different alternative (ABT #398). Only the first by name is kept, and the copies are
+    // not named anywhere in the result. The full record is serialised only when the (small) saturation data
+    // already matches an earlier candidate's, which keeps the check cheap.
+    auto physics_of = [](const CoreMaterial& coreMaterial) {
+        json physics;
+        to_json(physics, coreMaterial);
+        for (const auto& identityField : {"name", "manufacturerInfo", "provenance", "family", "commercialName", "alternatives"}) {
+            physics.erase(identityField);
+        }
+        return physics.dump();
+    };
+    std::map<std::string, std::vector<size_t>> candidatesBySaturation;
+    std::map<size_t, std::string> physicsOfCandidate;
     for (const auto& [name, coreMaterial] : coreMaterialDatabase){
-        if (name != referenceCoreMaterial.get_name()) {
-            if (!_onlyManufacturer || coreMaterial.get_manufacturer_info().get_name() == _onlyManufacturer.value()) {
-                coreMaterials.push_back({coreMaterial, 0.0});
+        if (name == referenceCoreMaterial.get_name() || !core_material_selectable_by_advisers(coreMaterial)) {
+            continue;
+        }
+        if (_onlyManufacturer && coreMaterial.get_manufacturer_info().get_name() != _onlyManufacturer.value()) {
+            continue;
+        }
+        json saturation;
+        to_json(saturation, coreMaterial.get_saturation());
+        auto& sameSaturation = candidatesBySaturation[saturation.dump()];
+        bool copy = false;
+        if (!sameSaturation.empty()) {
+            auto physics = physics_of(coreMaterial);
+            for (auto index : sameSaturation) {
+                if (!physicsOfCandidate.count(index)) {
+                    physicsOfCandidate[index] = physics_of(coreMaterials[index].first);
+                }
+                if (physicsOfCandidate[index] == physics) {
+                    copy = true;
+                    break;
+                }
             }
+        }
+        if (!copy) {
+            sameSaturation.push_back(coreMaterials.size());
+            coreMaterials.push_back({coreMaterial, 0.0});
         }
     }
 

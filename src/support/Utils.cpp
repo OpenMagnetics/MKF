@@ -1044,6 +1044,15 @@ CoreShape find_core_shape_by_name(std::string name) {
     return coreShape.value();
 }
 
+bool is_proprietary_core_material(const CoreMaterial& coreMaterial) {
+    const auto& proprietary = Defaults().proprietaryCoreMaterialManufacturers;
+    return std::find(proprietary.begin(), proprietary.end(), coreMaterial.get_manufacturer_info().get_name()) != proprietary.end();
+}
+
+bool core_material_selectable_by_advisers(const CoreMaterial& coreMaterial) {
+    return settings.get_use_proprietary_materials() || !is_proprietary_core_material(coreMaterial);
+}
+
 std::vector<std::string> get_core_material_names(std::optional<std::string> manufacturer) {
     if (coreMaterialDatabase.empty()) {
         load_core_materials();

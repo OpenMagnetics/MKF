@@ -250,6 +250,10 @@ void load_databases(json data, bool withAliases=true, bool addInternalData=true)
 
 std::vector<std::string> get_core_shape_names(std::string manufacturer);
 std::vector<std::string> get_core_material_names(std::optional<std::string> manufacturer=std::nullopt);
+// A proprietary core material (its manufacturer is in Defaults::proprietaryCoreMaterialManufacturers) is for hand
+// use only; an adviser or cross-referencer may pick it only with Settings::get_use_proprietary_materials() on.
+bool is_proprietary_core_material(const CoreMaterial& coreMaterial);
+bool core_material_selectable_by_advisers(const CoreMaterial& coreMaterial);
 std::vector<std::string> get_core_shape_names(CoreShapeFamily family);
 std::vector<std::string> get_core_shape_names();
 std::vector<std::string> get_shape_family_dimensions(CoreShapeFamily family, std::optional<std::string> familySubtype=std::nullopt);

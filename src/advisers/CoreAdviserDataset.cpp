@@ -226,7 +226,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
     magnetic.set_coil(std::move(coil));
     for (auto& core : *cores){
         auto coreMaterial = core.resolve_material();
-        if (!Core::check_material_application(coreMaterial, get_application())) {
+        if (!core_material_selectable_by_advisers(coreMaterial) || !Core::check_material_application(coreMaterial, get_application())) {
             continue;
         }
 

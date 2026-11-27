@@ -72,7 +72,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_powder_materials(std::
     }
     for (auto coreMaterial : coreMaterials) {
         auto resolved = Core::resolve_material(coreMaterial);
-        if (Core::check_material_application(resolved, _application)) {
+        if (core_material_selectable_by_advisers(resolved) && Core::check_material_application(resolved, _application)) {
             coreMaterialsToEvaluate.push_back(resolved);
         }
     }
@@ -161,7 +161,7 @@ std::vector<CoreMaterial> CoreAdviser::gather_ferrite_materials_for_application(
     }
     for (auto coreMaterial : coreMaterials) {
         auto resolved = Core::resolve_material(coreMaterial);
-        if (Core::check_material_application(resolved, _application)) {
+        if (core_material_selectable_by_advisers(resolved) && Core::check_material_application(resolved, _application)) {
             coreMaterialsToEvaluate.push_back(resolved);
         }
     }

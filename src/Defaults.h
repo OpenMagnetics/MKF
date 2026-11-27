@@ -119,6 +119,9 @@ struct Defaults {
     const std::string defaultEpoxyCoreCoatingMaterial = "epoxy";        // eps_r 3.6
     const std::string defaultParyleneCoreCoatingMaterial = "parylene";  // eps_r 3.1 (Parylene C)
     const std::string defaultNylonCoreCoatingMaterial = "Nylon 6.6";    // eps_r 3.4
+    // Manufacturers whose core materials are proprietary: they are for hand use only, in the products that name
+    // them. Advisers and cross-referencers never pick one unless Settings::set_use_proprietary_materials(true).
+    const std::vector<std::string> proprietaryCoreMaterialManufacturers = {"W\u00fcrth Elektronik"};
     // When a toroid carries no coating data, the default coating TYPE is chosen by size,
     // mirroring manufacturer practice (Micrometals: toroids with OD <= 0.20" / 5.08 mm
     // are vacuum-coated with Parylene C, larger cores get a two-color epoxy finish — the

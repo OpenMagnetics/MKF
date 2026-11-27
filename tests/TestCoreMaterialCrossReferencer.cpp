@@ -10,6 +10,7 @@
 #include <iostream>
 #include <magic_enum.hpp>
 #include <vector>
+#include <set>
 #include <typeinfo>
 
 using namespace MAS;
@@ -423,6 +424,68 @@ namespace {
         CoreMaterialCrossReferencer referenceCrossReferencer(std::map<std::string, std::string>{{"coreLosses", "Steinmetz"}});
         REQUIRE_THROWS_AS(referenceCrossReferencer.get_cross_referenced_core_material(Core::resolve_material(std::string("DN100H")), 25, 10),
                           MaterialTemperatureOutOfRangeException);
+    }
+
+    // Proprietary core materials (Defaults::proprietaryCoreMaterialManufacturers) are for hand use in the products
+    // that name them: a cross-reference never offers one unless the caller enables them.
+    TEST_CASE("Test_CoreMaterialCrossReferencer_Proprietary_Materials_Only_When_Enabled", "[adviser][core-material-cross-referencer][smoke-test]") {
+        settings.reset();
+        clear_databases();
+        CoreMaterial reference = Core::resolve_material("3C97");
+        auto proprietaryManufacturer = Defaults().proprietaryCoreMaterialManufacturers.front();
+
+        {
+            CoreMaterialCrossReferencer crossReferencer(std::map<std::string, std::string>{{"coreLosses", "STEINMETZ"}});
+            auto results = crossReferencer.get_cross_referenced_core_material(reference, 25, 50);
+            REQUIRE(results.size() > 0);
+            for (auto& [material, scoring] : results) {
+                INFO(material.get_name());
+                CHECK(!is_proprietary_core_material(material));
+            }
+        }
+        {
+            CoreMaterialCrossReferencer crossReferencer(std::map<std::string, std::string>{{"coreLosses", "STEINMETZ"}});
+            crossReferencer.use_only_manufacturer(proprietaryManufacturer);
+            REQUIRE(crossReferencer.get_cross_referenced_core_material(reference, 25, 50).empty());
+        }
+
+        // The adviser memos key on Settings::fingerprint: enabling proprietary materials must change it.
+        const std::string fingerprintOff = settings.fingerprint();
+        settings.set_use_proprietary_materials(true);
+        CHECK(settings.fingerprint() != fingerprintOff);
+        {
+            CoreMaterialCrossReferencer crossReferencer(std::map<std::string, std::string>{{"coreLosses", "STEINMETZ"}});
+            crossReferencer.use_only_manufacturer(proprietaryManufacturer);
+            auto results = crossReferencer.get_cross_referenced_core_material(reference, 25, 50);
+            REQUIRE(results.size() > 0);
+            for (auto& [material, scoring] : results) {
+                CHECK(is_proprietary_core_material(material));
+            }
+        }
+        settings.reset();
+    }
+
+    // Two records that differ only in name, seller and provenance are one material: the shortlist holds it once, so
+    // a copy cannot push a different alternative out. Checked with proprietary materials enabled, the catalogue
+    // where such copies exist.
+    TEST_CASE("Test_CoreMaterialCrossReferencer_Identical_Physics_Listed_Once", "[adviser][core-material-cross-referencer][smoke-test]") {
+        settings.reset();
+        clear_databases();
+        settings.set_use_proprietary_materials(true);
+        CoreMaterialCrossReferencer crossReferencer(std::map<std::string, std::string>{{"coreLosses", "STEINMETZ"}});
+        auto results = crossReferencer.get_cross_referenced_core_material(Core::resolve_material("3C97"), 25, 100);
+        REQUIRE(results.size() > 0);
+        std::set<std::string> physicsSeen;
+        for (auto& [material, scoring] : results) {
+            json physics;
+            to_json(physics, material);
+            for (const auto& identityField : {"name", "manufacturerInfo", "provenance", "family", "commercialName", "alternatives"}) {
+                physics.erase(identityField);
+            }
+            INFO(material.get_name());
+            CHECK(physicsSeen.insert(physics.dump()).second);
+        }
+        settings.reset();
     }
 
 }  // namespace

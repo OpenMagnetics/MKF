@@ -15,6 +15,7 @@
 #include <cmath>
 #include <string>
 #include <vector>
+#include <set>
 #include <execution>
 #include <magic_enum_utility.hpp>
 #include <list>
@@ -740,7 +741,21 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::get_cross_referenced_c
         useMaximumDimensions = true;
     }
 
+    // Cores in a proprietary material are for hand use only (see core_material_selectable_by_advisers).
+    if (coreMaterialDatabase.empty()) {
+        load_core_materials();
+    }
+    std::set<std::string> unselectableMaterialNames;
+    for (const auto& [materialName, coreMaterial] : coreMaterialDatabase) {
+        if (!core_material_selectable_by_advisers(coreMaterial)) {
+            unselectableMaterialNames.insert(materialName);
+        }
+    }
+
     for (auto core : coreDatabase){
+        if (unselectableMaterialNames.count(core.get_material_name())) {
+            continue;
+        }
         if (referenceShapeName != core.get_shape_name() || referenceMaterialName != core.get_material_name()) {
             if (_onlyManufacturer && !core.get_manufacturer_info()) {
                 // Was an unchecked ->get_name() on an empty optional (ABT #1616).

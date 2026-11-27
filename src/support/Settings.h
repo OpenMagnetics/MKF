@@ -370,6 +370,7 @@ class Settings
         std::string _preferredCoreMaterialPowderManufacturer = "Micrometals";
 
         bool _coreCrossReferencerAllowDifferentCoreMaterialType = false;
+        bool _useProprietaryMaterials = false;
 
     public:
         bool _debug = false;
@@ -757,6 +758,11 @@ class Settings
 
         bool get_core_cross_referencer_allow_different_core_material_type() const;
         void set_core_cross_referencer_allow_different_core_material_type(bool value);
+
+        // Proprietary core materials (Defaults::proprietaryCoreMaterialManufacturers) are for hand use only: off,
+        // advisers and cross-referencers never pick them; on, they compete like any other material.
+        bool get_use_proprietary_materials() const;
+        void set_use_proprietary_materials(bool value);
 
         // Centralized model configuration getters/setters
         MagneticFieldStrengthModels get_magnetic_field_strength_model() const;

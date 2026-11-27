@@ -238,6 +238,7 @@ namespace {
         add_to_fingerprint(text, _preferredCoreMaterialFerriteManufacturer);
         add_to_fingerprint(text, _preferredCoreMaterialPowderManufacturer);
         add_to_fingerprint(text, _coreCrossReferencerAllowDifferentCoreMaterialType);
+        add_to_fingerprint(text, _useProprietaryMaterials);
         add_to_fingerprint(text, _debug);
         return text;
     }
@@ -388,6 +389,7 @@ namespace {
         _preferredCoreMaterialPowderManufacturer = "Micrometals";
 
         _coreCrossReferencerAllowDifferentCoreMaterialType = false;
+        _useProprietaryMaterials = false;
 
         // Reset centralized model configuration to defaults
         _magneticFieldStrengthModel = Defaults().magneticFieldStrengthModelDefault;
@@ -1399,6 +1401,13 @@ namespace {
     }
     void Settings::set_core_cross_referencer_allow_different_core_material_type(bool value) {
         _coreCrossReferencerAllowDifferentCoreMaterialType = value;
+    }
+
+    bool Settings::get_use_proprietary_materials() const {
+        return _useProprietaryMaterials;
+    }
+    void Settings::set_use_proprietary_materials(bool value) {
+        _useProprietaryMaterials = value;
     }
 
     // Centralized model configuration getters/setters
