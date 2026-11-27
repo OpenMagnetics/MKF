@@ -4171,3 +4171,79 @@ TEST_CASE("Test_Settings_Fingerprint_Covers_Neutral_Cells_And_Winding_Losses_Mod
     settings.reset();
     CHECK(settings.fingerprint() == defaults);
 }
+
+// ABT #2118 (Alf, 2026-11-25/27): simulate keeps its numbers, but a result past a model's range is said to be so and
+// never quoted. simplest_transformer drives its ferrite (78) to a linear-model B peak of 8 T, above B_sat plus any field
+// its windings can drive (the physical ceiling). A one-turn ETD 24 3C97 design at 0.5 T is past it too: B_sat is 0.41 T
+// at 100 C and its 500 A turn adds only mu0 N I / l_e = 0.012 T (Alf, 2026-11-27: keep the ceiling). A B peak between
+// B_sat and the ceiling is still quoted. The 220 kW transformer's winding runs away past the 927 C its copper data covers.
+TEST_CASE("Test_Results_Past_A_Models_Range_Name_The_Limit_Not_The_Value", "[simulator][results-analyzer][smoke-test]") {
+    settings.reset();
+    auto findingsOf = [](const std::string& name) {
+        auto mas = OpenMagneticsTesting::mas_loader(OpenMagneticsTesting::get_test_data_dir(std::source_location::current()) / (name + ".json"));
+        auto simulated = MagneticSimulator().simulate(mas.get_inputs(), mas.get_magnetic());
+        return ResultsAnalyzer::analyze_results(simulated);
+    };
+    {
+        size_t outside = 0, saturates = 0;
+        for (const auto& finding : findingsOf("simplest_transformer")) {
+            INFO(to_string(finding.code) << ": " << finding.message);
+            if (finding.code == ResultFindingCode::OUTSIDE_MODEL_VALIDITY) {
+                ++outside;
+                REQUIRE(finding.validityLimit);
+                CHECK(finding.validityLimit.value() == ModelValidityLimit::FLUX_DENSITY_BEYOND_PHYSICAL_CEILING);
+            }
+            if (finding.code == ResultFindingCode::CORE_SATURATES) {
+                ++saturates;
+                CHECK(finding.message.find("B peak = ") == std::string::npos);
+            }
+        }
+        CHECK(outside == 1);
+        CHECK(saturates == 1);
+    }
+    {
+        size_t outside = 0, saturates = 0;
+        for (const auto& finding : findingsOf("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing")) {
+            INFO(to_string(finding.code) << ": " << finding.message);
+            if (finding.code == ResultFindingCode::OUTSIDE_MODEL_VALIDITY) {
+                ++outside;
+                REQUIRE(finding.validityLimit);
+                CHECK(finding.validityLimit.value() == ModelValidityLimit::FLUX_DENSITY_BEYOND_PHYSICAL_CEILING);
+            }
+            if (finding.code == ResultFindingCode::CORE_SATURATES) {
+                ++saturates;
+                CHECK(finding.message.find("B peak = ") == std::string::npos);
+            }
+        }
+        CHECK(outside == 1);
+        CHECK(saturates == 1);
+    }
+    {
+        // Between B_sat and the ceiling the B peak is a state of the part and is quoted.
+        auto mas = OpenMagneticsTesting::mas_loader(OpenMagneticsTesting::get_test_data_dir(std::source_location::current()) /
+                                                    "Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing.json");
+        auto material = mas.get_mutable_magnetic().get_mutable_core().resolve_material();
+        const double saturation = Core::get_magnetic_flux_density_saturation(material, 100, false);
+        auto within = ResultsAnalyzer::check_saturation(material, saturation + 0.005, 100, 1.0, std::nullopt, saturation + 0.012);
+        CHECK(within.saturates);
+        CHECK(!within.beyondPhysicalCeiling);
+        CHECK(within.message.find("B peak = ") != std::string::npos);
+        auto beyond = ResultsAnalyzer::check_saturation(material, saturation + 0.1, 100, 1.0, std::nullopt, saturation + 0.012);
+        CHECK(beyond.beyondPhysicalCeiling);
+        CHECK(beyond.message.find("B peak = ") == std::string::npos);
+    }
+    {
+        size_t noThermal = 0;
+        for (const auto& finding : findingsOf("220kW_trafo")) {
+            if (finding.code == ResultFindingCode::NO_THERMAL_OPERATING_POINT) {
+                ++noThermal;
+                INFO(finding.message);
+                // The limit is named; the runaway temperature is in the details only.
+                CHECK(finding.message.find("heat it to") == std::string::npos);
+                CHECK(finding.details);
+            }
+        }
+        CHECK(noThermal == 1);
+    }
+    settings.reset();
+}

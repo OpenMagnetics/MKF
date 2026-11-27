@@ -51,8 +51,16 @@ std::string to_string(ResultFindingCode code) {
         case ResultFindingCode::TURN_OUTLINES_NOT_EVALUABLE: return "TURN_OUTLINES_NOT_EVALUABLE";
         case ResultFindingCode::LEAD_EXIT_CLASHES: return "LEAD_EXIT_CLASHES";
         case ResultFindingCode::EDGEWISE_BEND_BELOW_COATING_MANDREL: return "EDGEWISE_BEND_BELOW_COATING_MANDREL";
+        case ResultFindingCode::OUTSIDE_MODEL_VALIDITY: return "OUTSIDE_MODEL_VALIDITY";
     }
     throw InvalidInputException(ErrorCode::INVALID_INPUT, "Unknown result finding code " + std::to_string(static_cast<int>(code)));
+}
+
+std::string to_string(ModelValidityLimit limit) {
+    switch (limit) {
+        case ModelValidityLimit::FLUX_DENSITY_BEYOND_PHYSICAL_CEILING: return "FLUX_DENSITY_BEYOND_PHYSICAL_CEILING";
+    }
+    throw InvalidInputException(ErrorCode::INVALID_INPUT, "Unknown model validity limit " + std::to_string(static_cast<int>(limit)));
 }
 
 void to_json(nlohmann::json& j, const ResultFinding& finding) {
@@ -67,6 +75,9 @@ void to_json(nlohmann::json& j, const ResultFinding& finding) {
     j["message"] = finding.message;
     if (finding.details) {
         j["details"] = finding.details.value();
+    }
+    if (finding.validityLimit) {
+        j["validityLimit"] = to_string(finding.validityLimit.value());
     }
 }
 
@@ -132,7 +143,7 @@ struct StatedTemperatureLimit {
 } // namespace
 
 SaturationVerdict ResultsAnalyzer::check_saturation(const CoreMaterial& coreMaterial, double peakFluxDensity, double temperature, double margin,
-                                                    std::optional<DcBiasPoint> dcBiasPoint) {
+                                                    std::optional<DcBiasPoint> dcBiasPoint, std::optional<double> fluxDensityCeiling) {
     if (!std::isfinite(peakFluxDensity)) {
         throw InvalidInputException(ErrorCode::INVALID_INPUT,
             "Saturation check: the peak flux density must be finite, not " + format_number(peakFluxDensity) + " T");
@@ -187,6 +198,12 @@ SaturationVerdict ResultsAnalyzer::check_saturation(const CoreMaterial& coreMate
     verdict.noDcOperatingPoint = dcBiasPoint && dcBiasPoint->noDcOperatingPoint;
     verdict.saturates = verdict.fluxDensityAboveSaturation || verdict.permeabilityCollapsed || verdict.fieldStrengthAboveSaturation ||
                         verdict.noDcOperatingPoint;
+    // ABT #2118 (Alf, 2026-11-25/27): a B peak above the physical ceiling is the linear model's flux in a core that
+    // cannot carry it (8 T in a ferrite): no state of the part. The messages name the ceiling and B_sat instead.
+    if (verdict.fluxDensityAboveSaturation && fluxDensityCeiling && peakFluxDensity > fluxDensityCeiling.value()) {
+        verdict.beyondPhysicalCeiling = true;
+        verdict.fluxDensityCeiling = fluxDensityCeiling;
+    }
 
     // ABT #2001: the first sentence says the problem with rounded numbers; the explanation follows.
     std::ostringstream message;
@@ -194,7 +211,15 @@ SaturationVerdict ResultsAnalyzer::check_saturation(const CoreMaterial& coreMate
     if (verdict.saturates) {
         // One clause per criterion that fired, joined into the first sentence.
         std::vector<std::string> clauses;
-        if (verdict.fluxDensityAboveSaturation) {
+        if (verdict.fluxDensityAboveSaturation && verdict.beyondPhysicalCeiling) {
+            std::ostringstream clause;
+            clause << "its flux density is above " << format_number(verdict.fluxDensityCeiling.value())
+                   << " T, the most the core can carry here (B_sat = " << format_number(verdict.saturationFluxDensity) << " T of "
+                   << coreMaterial.get_name() << " at " << format_number(temperature)
+                   << " C, plus the field its windings drive): the flux density computed there is not one the core can carry";
+            clauses.push_back(clause.str());
+        }
+        else if (verdict.fluxDensityAboveSaturation) {
             std::ostringstream clause;
             clause << "B peak = " << format_number(peakFluxDensity) << " T" << marginNote << " is above B_sat = "
                    << format_number(verdict.saturationFluxDensity) << " T of " << coreMaterial.get_name() << " at "
@@ -307,11 +332,36 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_saturation(const Magnetic& m
         magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(magnetic, &operatingPointAtCoreTemperature);
         dcBiasPoint = magnetizingInductanceModel.get_last_dc_bias_point();
     }
-    auto verdict = check_saturation(coreMaterial, peakFluxDensity, coreTemperature, 1.0, dcBiasPoint);
+    // The physical ceiling (ABT #2118): B_sat at the core's temperature plus mu0 H with H at most the windings' summed peak
+    // MMF over the core's effective length (a gap only lowers it). A winding without an excitation carries no current.
+    double magnetomotiveForce = 0;
+    const auto& windingsForCeiling = magnetic.get_coil().get_functional_description();
+    const auto& excitationsForCeiling = operatingPoint.get_excitations_per_winding();
+    for (size_t windingIndex = 0; windingIndex < std::min(windingsForCeiling.size(), excitationsForCeiling.size()); ++windingIndex) {
+        const auto& current = excitationsForCeiling[windingIndex].get_current();
+        if (!current) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "analyze_results: winding '" + windingsForCeiling[windingIndex].get_name() + "' of the " +
+                describe_operating_point_for_people(operatingPoint, operatingPointIndex) + " has an excitation with no current, which bounds its flux density");
+        }
+        magnetomotiveForce += static_cast<double>(windingsForCeiling[windingIndex].get_number_turns()) * get_peak_flux_density(current.value());
+    }
+    const double fluxDensityCeiling = Core::get_magnetic_flux_density_saturation(coreMaterial, coreTemperature, false) +
+                                      Constants().vacuumPermeability * magnetomotiveForce / magnetic.get_core().get_effective_length();
+    auto verdict = check_saturation(coreMaterial, peakFluxDensity, coreTemperature, 1.0, dcBiasPoint, fluxDensityCeiling);
     if (!verdict.saturates) {
         return {};
     }
-    return {make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::CORE_SATURATES, "At " + where + ": " + verdict.message)};
+    std::vector<ResultFinding> findings{make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::CORE_SATURATES, "At " + where + ": " + verdict.message)};
+    if (verdict.beyondPhysicalCeiling) {
+        auto finding = make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::OUTSIDE_MODEL_VALIDITY,
+            "At " + where + ": the core's flux density is above " + format_number(verdict.fluxDensityCeiling.value()) +
+            " T, the most it can carry under this operating point (B_sat of " + coreMaterial.get_name() + " at " + format_number(coreTemperature) +
+            " C plus the field its windings drive). The flux density, magnetizing inductance and core losses given for this operating "
+            "point are those of a core that cannot carry that flux, not of this part");
+        finding.validityLimit = ModelValidityLimit::FLUX_DENSITY_BEYOND_PHYSICAL_CEILING;
+        findings.push_back(finding);
+    }
+    return findings;
 }
 
 std::vector<ResultFinding> ResultsAnalyzer::analyze_volt_second_balance(const OperatingPoint& operatingPoint, size_t operatingPointIndex,

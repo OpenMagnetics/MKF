@@ -90,9 +90,26 @@ enum class ResultFindingCode {
     // runs are drawn as planned; one finding per clash, naming the lead and the numbers. No operating
     // point.
     LEAD_EXIT_CLASHES,
+    // ABT #2118 (Alf, 2026-11-25): a number simulate gives for this operating point lies past the range of the model
+    // that computed it, so it describes no state the part can be in (a core
+    // flux density above B_sat plus the field the windings' own MMF can add: the linear model's B of a core that cannot
+    // carry it, 8 T or 101 T in a ferrite). simulate keeps its numbers
+    // (ABT #1855); this finding says which one is out of range (validityLimit) and names the limit, and the findings
+    // about that quantity name the limit instead of quoting the value.
+    OUTSIDE_MODEL_VALIDITY,
 };
 
 std::string to_string(ResultFindingCode code);
+
+// Which model range an OUTSIDE_MODEL_VALIDITY finding is about.
+enum class ModelValidityLimit {
+    // The core's peak flux density is above what any core can carry under the operating point's own MMF: its
+    // material's B_sat at the core's temperature plus mu0 * sum(N_k I_peak,k) / l_e, the field the windings could
+    // add at most on top of a fully saturated material.
+    FLUX_DENSITY_BEYOND_PHYSICAL_CEILING,
+};
+
+std::string to_string(ModelValidityLimit limit);
 
 // One finding: which operating point (its index in the MAS, and its name when it has one), what
 // (code) and MKF's message, readable as it stands. A finding about the magnetic itself rather than
@@ -105,6 +122,8 @@ struct ResultFinding {
     std::string message;
     // The numbers behind the message, for whoever has to look into it (a solver's iterates); none for most findings.
     std::optional<std::string> details;
+    // OUTSIDE_MODEL_VALIDITY only: which model range the result is past.
+    std::optional<ModelValidityLimit> validityLimit;
 };
 
 void to_json(nlohmann::json& j, const ResultFinding& finding);
@@ -125,6 +144,10 @@ struct SaturationVerdict {
     // Criterion 4 (Alf, 2026-10-24): the magnetizing model's DC solve found no operating point
     // (DcBiasPoint::noDcOperatingPoint) and took the saturated mu_r = 1.
     bool noDcOperatingPoint;
+    // B peak above the physical ceiling the caller gave (ABT #2118): the messages then name the ceiling and B_sat, not
+    // the B peak.
+    bool beyondPhysicalCeiling = false;
+    std::optional<double> fluxDensityCeiling;
     // The curve's peak field strength and the material's H_sat it was held against, when criterion 3 applied.
     std::optional<double> peakFieldStrength;
     std::optional<double> saturationFieldStrength;
@@ -155,8 +178,11 @@ class ResultsAnalyzer {
     //      H_sat(temperature) (Core::get_magnetic_field_strength_saturation): on the curve B rises only on
     //      the vacuum slope past the knee, so B_sat alone misses a core driven past it (Alf, 2026-10-18).
     // Callers that ran the magnetizing model pass its DC point; without one only criterion 1 applies.
+    // fluxDensityCeiling (ABT #2118, analyze_results only): the most flux density the part can physically carry at this
+    // point; a B peak above it is described by the ceiling, never quoted.
     static SaturationVerdict check_saturation(const CoreMaterial& coreMaterial, double peakFluxDensity, double temperature,
-                                              double margin = 1.0, std::optional<DcBiasPoint> dcBiasPoint = std::nullopt);
+                                              double margin = 1.0, std::optional<DcBiasPoint> dcBiasPoint = std::nullopt,
+                                              std::optional<double> fluxDensityCeiling = std::nullopt);
     // |B| peak of a flux-density signal: its processed peak, else the largest magnitude of its
     // waveform. Throws when it has neither.
     static double get_peak_flux_density(const SignalDescriptor& magneticFluxDensity);

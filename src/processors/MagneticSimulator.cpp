@@ -830,9 +830,12 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
                             << " over the last two iterates";
                 }
                 details << ". History:" << history;
+                // ABT #2118 (Alf, 2026-11-25): the message names the limit, never the meaningless runaway temperature;
+                // the iterates go in the details.
                 throw NoThermalOperatingPointException(ErrorCode::CALCULATION_DIVERGED,
                     "No steady temperature: the winding runs away thermally, past " + format_significant(conductorDataLimit.value()) +
-                    " C, the hottest its conductor's material data covers (its losses heat it to " + format_significant(nextWindingTemperature) + " C).",
+                    " C, the hottest its conductor's material data covers: past that the computed temperature is not a"
+                    " temperature of the winding.",
                     lossesAtAmbient.value(), details.str());
             }
             SolvedLosses solved;
